@@ -1,0 +1,22 @@
+{
+  "name": "radar-salesforce",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Radar de Oportunidades Salesforce da Sottelli",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "radar": "node src/cli.ts",
+    "coletar": "node src/cli.ts coletar",
+    "pontuar": "node src/cli.ts pontuar",
+    "painel": "node src/cli.ts painel",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
