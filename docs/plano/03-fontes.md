@@ -8,9 +8,9 @@ Ver status atual com `node src/cli.ts fontes`.
 | Fonte | Status | Observação |
 |---|---|---|
 | **Gupy** | ✅ Ativa | Busca pública do portal (`portal.gupy.io/job-search`); robots.txt libera tudo |
-| Greenhouse | Planejada | API pública por empresa |
-| Lever | Planejada | API pública por empresa |
-| SmartRecruiters | Planejada | API pública por empresa |
+| **Greenhouse** | ✅ Ativa | API pública por empresa; quadros em `seeds/quadros.csv` |
+| **Lever** | ✅ Ativa | API pública por empresa; quadros em `seeds/quadros.csv` |
+| **SmartRecruiters** | ✅ Ativa | API pública por empresa (busca "salesforce"); quadros em `seeds/quadros.csv` |
 | Workday | Planejada | Páginas de carreira; verificar robots.txt por empresa |
 | Sólides / Inhire / Kenoby | Planejada | Verificar robots.txt |
 | Programathor / GeekHunter / Trampos | Planejada | Verificar robots.txt |

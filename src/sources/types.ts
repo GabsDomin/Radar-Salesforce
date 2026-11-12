@@ -24,9 +24,9 @@ export interface SourceInfo {
 
 export const SOURCE_CATALOG: SourceInfo[] = [
   { id: 'gupy', name: 'Gupy (portal público de vagas)', kind: 'vagas', status: 'ativa', note: 'robots.txt libera tudo; lê a busca pública do portal.' },
-  { id: 'greenhouse', name: 'Greenhouse (API pública de vagas)', kind: 'vagas', status: 'planejada', note: 'API pública por empresa.' },
-  { id: 'lever', name: 'Lever (API pública de vagas)', kind: 'vagas', status: 'planejada', note: 'API pública por empresa.' },
-  { id: 'smartrecruiters', name: 'SmartRecruiters (API pública)', kind: 'vagas', status: 'planejada', note: 'API pública por empresa.' },
+  { id: 'greenhouse', name: 'Greenhouse (API pública de vagas)', kind: 'vagas', status: 'ativa', note: 'API pública por empresa; quadros em seeds/quadros.csv.' },
+  { id: 'lever', name: 'Lever (API pública de vagas)', kind: 'vagas', status: 'ativa', note: 'API pública por empresa; quadros em seeds/quadros.csv.' },
+  { id: 'smartrecruiters', name: 'SmartRecruiters (API pública)', kind: 'vagas', status: 'ativa', note: 'API pública por empresa; quadros em seeds/quadros.csv.' },
   { id: 'workday', name: 'Workday (páginas de carreira)', kind: 'vagas', status: 'planejada', note: 'Verificar robots.txt por empresa.' },
   { id: 'solides', name: 'Sólides / Inhire / Kenoby', kind: 'vagas', status: 'planejada', note: 'Verificar robots.txt.' },
   { id: 'programathor', name: 'Programathor / GeekHunter / Trampos', kind: 'vagas', status: 'planejada', note: 'Verificar robots.txt.' },

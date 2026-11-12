@@ -89,11 +89,12 @@ function option(value: string, label: string, current?: string) {
   return `<option value="${esc(value)}"${current === value ? ' selected' : ''}>${esc(label)}</option>`;
 }
 
-export function listPage(rows: CompanyRow[], f: Filters, runs: { collector: string; finished_at: string | null; stats: string | null }[]): string {
+// `isStatic` = versão publicada (Vercel): filtros rodam no navegador e não há edição.
+export function listPage(rows: CompanyRow[], f: Filters, runs: { collector: string; finished_at: string | null; stats: string | null }[], isStatic = false): string {
   const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as [string, string][]).toString();
   const lastRun = runs[0];
   const filters = `
-<form class="card filters" method="get" action="/">
+<form class="card filters" method="get" action="/"${isStatic ? ' onsubmit="return false"' : ''}>
   <label>Buscar<input name="q" value="${esc(f.q)}" placeholder="nome da empresa"></label>
   <label>Setor<select name="setor">${option('', 'Todos', f.setor)}${option('industria', 'Indústria', f.setor)}${option('financeiro', 'Serv. financeiros', f.setor)}${option('agro', 'Agronegócio', f.setor)}${option('desconhecido', 'Não identificado', f.setor)}</select></label>
   <label>Oferta<select name="oferta">${option('', 'Todas', f.oferta)}${option('Keep', 'Keep (sustentação)', f.oferta)}${option('Improve', 'Improve (alocação)', f.oferta)}${option('Ágil', 'Ágil (projeto)', f.oferta)}</select></label>
@@ -102,7 +103,7 @@ export function listPage(rows: CompanyRow[], f: Filters, runs: { collector: stri
   <label>Nota mínima<input name="min" type="number" min="0" max="100" value="${esc(f.min)}" style="width:90px"></label>
   <label><span>Excluídas</span><select name="excluidas">${option('', 'Ocultar', f.excluidas)}${option('1', 'Mostrar', f.excluidas)}</select></label>
   <button type="submit">Filtrar</button>
-  <a class="btn secondary" href="/export.csv${qs ? '?' + qs : ''}">Exportar CSV</a>
+  ${isStatic ? '<a class="btn secondary" href="/radar.csv" download>Exportar CSV</a>' : `<a class="btn secondary" href="/export.csv${qs ? '?' + qs : ''}">Exportar CSV</a>`}
 </form>`;
 
   const body = rows.length
@@ -110,7 +111,8 @@ export function listPage(rows: CompanyRow[], f: Filters, runs: { collector: stri
         const offers: OfferSuggestion[] = r.offers ? JSON.parse(r.offers) : [];
         const bd: BreakdownItem[] = r.breakdown ? JSON.parse(r.breakdown) : [];
         const top = bd.filter((b) => b.points > 0).sort((a, b) => b.points - a.points).slice(0, 2);
-        return `<tr>
+        const attrs = ` data-nota="${r.total ?? 0}" data-name="${esc(r.name.toLowerCase())}" data-setor="${esc(r.sector ?? '')}" data-oferta="${esc(offers.map((o) => o.offer).join(','))}" data-sinal="${esc(r.signal_types ?? '')}" data-status="${esc(r.status)}"${r.excluded_reason ? ' data-excl="1"' : ''}`;
+        return `<tr${attrs}>
   <td><span class="score ${scoreClass(r.total)}">${r.total ?? '—'}</span></td>
   <td><a href="/empresa/${r.id}"><strong>${esc(r.name)}</strong></a>
       ${r.excluded_reason ? `<span class="chip flag">excluída: ${esc(r.excluded_reason)}</span>` : ''}
@@ -129,13 +131,13 @@ export function listPage(rows: CompanyRow[], f: Filters, runs: { collector: stri
   return layout('Radar Salesforce', `
 ${filters}
 <div class="card">
-  <div class="muted small" style="margin-bottom:8px">${rows.length} conta(s) · ordenadas por nota
+  <div class="muted small" style="margin-bottom:8px"><span id="count">${rows.length}</span> conta(s) · ordenadas por nota
     ${lastRun ? ` · última coleta: ${esc(lastRun.collector)} em ${fmtDate(lastRun.finished_at)}` : ''}</div>
   <div class="table-wrap"><table>
     <thead><tr><th>Nota</th><th>Empresa</th><th>Oferta sugerida</th><th>Setor</th><th>Local</th><th>Sinais</th><th>Último sinal</th><th>Status</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div>
-</div>`);
+</div>${isStatic ? STATIC_FILTER_SCRIPT : ''}`);
 }
 
 export function detailPage(d: {
@@ -144,7 +146,7 @@ export function detailPage(d: {
   aliases: { alias: string; source: string }[];
   breakdown: BreakdownItem[];
   offers: OfferSuggestion[];
-}): string {
+}, isStatic = false): string {
   const c = d.company;
   const bd = d.breakdown.map((b) => `
 <div class="bd-row">
@@ -190,7 +192,7 @@ export function detailPage(d: {
     <div class="card"><h2>Oferta sugerida</h2>${offers}</div>
     <div class="card"><h2>Hipótese e rascunho de abordagem</h2>
       <p class="small muted">Geração via Claude API entra na etapa 9. O rascunho nunca é enviado automaticamente.</p></div>
-    <form class="card stack" method="post" action="/empresa/${c.id}">
+    ${isStatic ? readOnlyFollowUp(c) : `<form class="card stack" method="post" action="/empresa/${c.id}">
       <h2>Acompanhamento</h2>
       <label class="small muted">Status<br><select name="status">${STATUSES.map((s) => option(s, STATUS_LABEL[s], c.status)).join('')}</select></label>
       <label class="small muted">Etapa do funil<br><select name="stage">${STAGES.map((s) => option(s, STAGE_LABEL[s], c.stage)).join('')}</select></label>
@@ -199,7 +201,7 @@ export function detailPage(d: {
       <label class="small muted">Excluir do radar<br><select name="excluded_reason">${option('', 'Não excluir', c.excluded_reason ?? '')}${option('cliente', 'Já é cliente', c.excluded_reason ?? '')}${option('concorrente', 'Concorrente/consultoria', c.excluded_reason ?? '')}${option('recrutadora', 'Recrutadora', c.excluded_reason ?? '')}</select></label>
       <label class="small muted">Anotações<br><textarea name="notes" rows="4" style="width:100%">${esc(c.notes)}</textarea></label>
       <button type="submit">Salvar</button>
-    </form>
+    </form>`}
     <div class="card small"><h2>Nomes encontrados</h2>${d.aliases.map((a) => `<div>${esc(a.alias)} <span class="muted">(${esc(a.source)})</span></div>`).join('')}</div>
   </div>
 </div>`);
@@ -207,4 +209,36 @@ export function detailPage(d: {
 
 export function notFoundPage(): string {
   return layout('Não encontrado', '<div class="card">Conta não encontrada. <a href="/">Voltar</a></div>');
+}
+
+const STATIC_FILTER_SCRIPT = `<script>
+(function(){
+  var f=document.querySelector('form.filters');
+  function apply(){
+    var v=Object.fromEntries(new FormData(f)),n=0;
+    document.querySelectorAll('tbody tr[data-nota]').forEach(function(tr){
+      var d=tr.dataset;
+      var ok=(!v.q||d.name.indexOf(v.q.toLowerCase())>=0)
+        &&(!v.setor||(v.setor==='desconhecido'?!d.setor:d.setor===v.setor))
+        &&(!v.oferta||d.oferta.split(',').indexOf(v.oferta)>=0)
+        &&(!v.sinal||d.sinal.split(',').indexOf(v.sinal)>=0)
+        &&(!v.status||d.status===v.status)
+        &&(!v.min||+d.nota>=+v.min)
+        &&(v.excluidas==='1'||!d.excl);
+      tr.hidden=!ok; if(ok)n++;
+    });
+    document.getElementById('count').textContent=n;
+  }
+  f.addEventListener('input',apply);apply();
+})();
+</script>`;
+
+function readOnlyFollowUp(c: { status: string; stage: string; next_action: string | null; next_action_at: string | null; notes: string | null }): string {
+  return `<div class="card stack">
+      <h2>Acompanhamento</h2>
+      <p class="small muted">Versão publicada, somente leitura. Edite no painel local e publique de novo.</p>
+      <div class="small">Status: <strong>${esc(STATUS_LABEL[c.status] ?? c.status)}</strong> · Etapa: <strong>${esc(STAGE_LABEL[c.stage] ?? c.stage)}</strong></div>
+      <div class="small">Próxima ação: ${esc(c.next_action) || '—'}${c.next_action_at ? ' (' + esc(c.next_action_at) + ')' : ''}</div>
+      ${c.notes ? `<div class="small" style="white-space:pre-wrap">${esc(c.notes)}</div>` : ''}
+    </div>`;
 }

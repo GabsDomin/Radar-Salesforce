@@ -12,6 +12,7 @@
     "coletar": "node src/cli.ts coletar",
     "pontuar": "node src/cli.ts pontuar",
     "painel": "node src/cli.ts painel",
+    "site": "node src/cli.ts site",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc"
   },

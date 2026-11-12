@@ -128,3 +128,67 @@ test('pipeline completo: coleta → contas → exclusões → nota → painel/CS
   const again = ingestJobs(db, postings);
   assert.equal(again.newSignals, 0);
 });
+
+test('Greenhouse, Lever e SmartRecruiters: filtram Salesforce no Brasil e viram vagas comuns', async () => {
+  const { parseBoards, collectBoards } = await import('../src/sources/boards.ts');
+  const boards = parseBoards([
+    { fonte: 'greenhouse', slug: 'acme', empresa: 'Acme Indústria' },
+    { fonte: 'lever', slug: 'banco', empresa: 'Banco Exemplo' },
+    { fonte: 'smartrecruiters', slug: 'agro', empresa: 'Agro Exemplo' },
+    { fonte: 'lever', slug: 'quebrado', empresa: 'Quebrado' },
+    { fonte: 'outra', slug: 'x', empresa: 'Ignorada' },
+  ]);
+  assert.equal(boards.length, 4);
+  const gh = { jobs: [
+    { id: 1, title: 'Salesforce Developer', absolute_url: 'https://boards.greenhouse.io/acme/jobs/1', updated_at: '2026-10-01T00:00:00Z', location: { name: 'São Paulo, Brazil' }, content: '&lt;p&gt;Apex e LWC&lt;/p&gt;' },
+    { id: 2, title: 'Salesforce Developer', absolute_url: 'https://boards.greenhouse.io/acme/jobs/2', location: { name: 'Austin, TX' }, content: '' },
+    { id: 3, title: 'Contador', absolute_url: 'https://boards.greenhouse.io/acme/jobs/3', location: { name: 'São Paulo' }, content: '' },
+  ] };
+  const lever = [{ id: 'abc', text: 'Admin Salesforce', hostedUrl: 'https://jobs.lever.co/banco/abc', createdAt: 1790000000000, descriptionPlain: 'Sales Cloud', categories: { location: 'Brasil' } }];
+  const sr = { content: [{ id: '9', name: 'Salesforce Architect', releasedDate: '2026-10-02T00:00:00Z', location: { city: 'Campinas', region: 'SP', country: 'br' } }] };
+  const ok = (b: unknown) => ({ status: 200, body: JSON.stringify(b) });
+  const client = new PoliteClient({
+    sleep: noSleep,
+    fetchFn: fakeFetch({
+      'https://boards-api.greenhouse.io/robots.txt': { status: 404, body: '' },
+      'https://api.lever.co/robots.txt': { status: 404, body: '' },
+      'https://api.smartrecruiters.com/robots.txt': { status: 404, body: '' },
+      'https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true': ok(gh),
+      'https://api.lever.co/v0/postings/banco?mode=json': ok(lever),
+      'https://api.smartrecruiters.com/v1/companies/agro/postings?q=salesforce&limit=100': ok(sr),
+      'https://api.lever.co/v0/postings/quebrado?mode=json': { status: 200, body: 'não é json' },
+    }),
+  });
+  const logs: string[] = [];
+  const postings = await collectBoards(client, boards, (m) => logs.push(m));
+  assert.deepEqual(postings.map((p) => [p.source, p.companyName, p.title]), [
+    ['greenhouse', 'Acme Indústria', 'Salesforce Developer'],
+    ['lever', 'Banco Exemplo', 'Admin Salesforce'],
+    ['smartrecruiters', 'Agro Exemplo', 'Salesforce Architect'],
+  ]);
+  assert.equal(postings[0].description, 'Apex e LWC');
+  assert.ok(logs.some((l) => l.includes('quebrado falhou')));
+
+  const db = openDb(':memory:');
+  const stats = ingestJobs(db, postings);
+  assert.equal(stats.notSalesforce, 0);
+});
+
+test('site estático: gera lista, detalhe e CSV sem formulário de edição', async () => {
+  const { buildStaticSite } = await import('../src/web/static.ts');
+  const db = openDb(':memory:');
+  ingestJobs(db, [{ source: 'gupy', externalId: '1', title: 'Desenvolvedor Salesforce', description: 'Apex e Service Cloud em indústria.', companyName: 'Alimentos Exemplo S.A.', url: 'https://a.gupy.io/job/1', publishedAt: '2026-10-01T10:00:00Z', city: null, state: null, country: 'BR', documentId: null }]);
+  scoreAll(db, NOW);
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'radar-site-')), 'public');
+  const r = buildStaticSite(db, out);
+  assert.equal(r.companies, 1);
+  const index = fs.readFileSync(path.join(out, 'index.html'), 'utf8');
+  assert.match(index, /Alimentos Exemplo/);
+  assert.match(index, /data-nota=/);
+  assert.match(index, /radar\.csv/);
+  const id = (db.prepare('SELECT id FROM companies').get() as { id: number }).id;
+  const detail = fs.readFileSync(path.join(out, 'empresa', `${id}.html`), 'utf8');
+  assert.match(detail, /Por que essa nota/);
+  assert.doesNotMatch(detail, /<form/);
+  assert.match(fs.readFileSync(path.join(out, 'radar.csv'), 'utf8'), /Alimentos Exemplo/);
+});
