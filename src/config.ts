@@ -13,6 +13,9 @@ export const http = {
   maxRetries: 2,
 };
 
+// GDELT pede no máximo 1 requisição a cada 5 s.
+export const gdeltIntervalMs = 5500;
+
 // Termos buscados nas fontes de vagas.
 export const jobSearchTerms = [
   'salesforce',
@@ -26,6 +29,20 @@ export const jobSearchTerms = [
   'experience cloud',
   'data cloud',
   'agentforce',
+];
+
+// Termos para achar empresas que usam CRM concorrente (candidatas a migração) e
+// times de operação comercial. Só entra vaga que cite algum CRM (Salesforce ou concorrente).
+export const competitorSearchTerms = [
+  'hubspot',
+  'rd station',
+  'dynamics 365',
+  'zoho crm',
+  'pipedrive',
+  'sap c4c',
+  'revops',
+  'sales ops',
+  'gerente de crm',
 ];
 
 // Perfil de cliente ideal (ICP).
@@ -43,4 +60,4 @@ export const jobWindows = {
   hardToFillDays: 45,
 };
 
-export const RULES_VERSION = 'v1';
+export const RULES_VERSION = 'v1.3';

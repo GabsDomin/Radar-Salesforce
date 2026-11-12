@@ -9,7 +9,9 @@
   },
   "scripts": {
     "radar": "node src/cli.ts",
+    "atualizar": "node src/cli.ts atualizar",
     "coletar": "node src/cli.ts coletar",
+    "noticias": "node src/cli.ts noticias",
     "pontuar": "node src/cli.ts pontuar",
     "painel": "node src/cli.ts painel",
     "site": "node src/cli.ts site",

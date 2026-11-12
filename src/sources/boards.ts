@@ -3,6 +3,7 @@
 // a lista fica em seeds/quadros.csv e cresce com o tempo.
 import type { PoliteClient } from '../http/client.ts';
 import type { JobPosting } from './types.ts';
+import { detectCountry, isAllowedCountry } from '../normalize/location.ts';
 
 export type BoardKind = 'greenhouse' | 'lever' | 'smartrecruiters';
 export interface Board {
@@ -11,17 +12,20 @@ export interface Board {
   company: string;
 }
 
-const SF_RE = /salesforce|pardot|marketing cloud|service cloud|sales cloud|experience cloud|data cloud|agentforce|account engagement|\bapex\b/i;
-const BR_RE = /brazil|brasil|\bbr\b|são paulo|sao paulo|rio de janeiro|minas gerais|curitiba|porto alegre|belo horizonte|remote|remoto/i;
-
-export function isBrazilian(location: string): boolean {
-  return location.trim() === '' || BR_RE.test(location);
+// Vagas relevantes: citam Salesforce ou um CRM concorrente (a classificação fina é feita no ingest).
+const SF_RE = /salesforce|pardot|marketing cloud|service cloud|sales cloud|experience cloud|data cloud|agentforce|account engagement|\bapex\b|hubspot|rd ?station|dynamics ?365|dynamics crm|\bzoho\b|pipedrive|\bc4c\b|siebel|marketo|ploomes|agendor|bitrix/i;
+// Escopo: Brasil + América Latina. Localização vazia ou "Remote" genérico não bastam.
+export function regionOf(location: string): string | null {
+  const iso = detectCountry(location, null, null);
+  return isAllowedCountry(iso) ? iso : null;
 }
 
 function stripHtml(s: string): string {
   return s
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
     .replace(/<[^>]+>/g, ' ')
+    // O Greenhouse escapa duas vezes: depois do primeiro passo ainda sobram entidades como &nbsp;.
+    .replace(/&nbsp;|&#160;/g, ' ').replace(/&amp;/g, '&').replace(/&[a-z]+;/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -40,7 +44,7 @@ export function parseGreenhouse(json: string, board: Board, documentId: number |
   const jobs: GhJob[] = JSON.parse(json).jobs ?? [];
   return jobs
     .map((j) => ({ j, description: stripHtml(j.content ?? '') }))
-    .filter(({ j, description }) => SF_RE.test(`${j.title} ${description}`) && isBrazilian(j.location?.name ?? ''))
+    .filter(({ j, description }) => SF_RE.test(`${j.title} ${description}`) && regionOf(j.location?.name ?? '') !== null)
     .map(({ j, description }) => ({
       source: 'greenhouse',
       externalId: `${board.slug}:${j.id}`,
@@ -51,7 +55,7 @@ export function parseGreenhouse(json: string, board: Board, documentId: number |
       publishedAt: j.updated_at ?? null,
       city: j.location?.name || null,
       state: null,
-      country: 'BR',
+      country: regionOf(j.location?.name ?? '') ?? 'desconhecido',
       documentId,
     }));
 }
@@ -70,7 +74,7 @@ export function parseLever(json: string, board: Board, documentId: number | null
   const jobs: LeverJob[] = JSON.parse(json);
   if (!Array.isArray(jobs)) throw new Error('Lever: resposta inesperada (esperava lista de vagas)');
   return jobs
-    .filter((j) => SF_RE.test(`${j.text} ${j.descriptionPlain ?? ''}`) && isBrazilian(j.categories?.location ?? ''))
+    .filter((j) => SF_RE.test(`${j.text} ${j.descriptionPlain ?? ''}`) && regionOf(j.categories?.location ?? '') !== null)
     .map((j) => ({
       source: 'lever',
       externalId: `${board.slug}:${j.id}`,
@@ -81,7 +85,7 @@ export function parseLever(json: string, board: Board, documentId: number | null
       publishedAt: j.createdAt ? new Date(j.createdAt).toISOString() : null,
       city: j.categories?.location || null,
       state: null,
-      country: 'BR',
+      country: regionOf(j.categories?.location ?? '') ?? 'desconhecido',
       documentId,
     }));
 }
@@ -99,7 +103,7 @@ interface SrJob {
 export function parseSmartRecruiters(json: string, board: Board, documentId: number | null): JobPosting[] {
   const jobs: SrJob[] = JSON.parse(json).content ?? [];
   return jobs
-    .filter((j) => (j.location?.country ?? 'br').toLowerCase() === 'br')
+    .filter((j) => isAllowedCountry((j.location?.country ?? '').toUpperCase()))
     .map((j) => ({
       source: 'smartrecruiters',
       externalId: `${board.slug}:${j.id}`,
@@ -110,7 +114,7 @@ export function parseSmartRecruiters(json: string, board: Board, documentId: num
       publishedAt: j.releasedDate ?? null,
       city: j.location?.city || null,
       state: j.location?.region || null,
-      country: 'BR',
+      country: (j.location?.country ?? '').toUpperCase(),
       documentId,
     }));
 }

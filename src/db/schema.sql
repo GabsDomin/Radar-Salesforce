@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS companies (
   next_action_at   TEXT,
   notes            TEXT,
   excluded_reason  TEXT,              -- cliente | concorrente | recrutadora | NULL
+  discard_reason   TEXT,              -- motivo ao descartar (ver decisions.ts)
+  decided_at       TEXT,              -- última decisão (aprovar/descartar)
+  snoozed_until    TEXT,              -- AAAA-MM-DD: conta adiada até essa data
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -80,8 +83,19 @@ CREATE TABLE IF NOT EXISTS scores (
   offers        TEXT NOT NULL,         -- JSON: [{offer, reasons[]}]
   breakdown     TEXT NOT NULL,         -- JSON: [{rule, points, max, reason, signalIds[]}]
   rules_version TEXT NOT NULL,
+  prev_total    INTEGER,               -- nota anterior (para mostrar subiu/desceu)
   computed_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Histórico de decisões e mudanças de cada conta.
+CREATE TABLE IF NOT EXISTS account_events (
+  id         INTEGER PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,            -- aprovada | descartada | adiada | reaberta | etapa | nota
+  detail     TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_events_company ON account_events(company_id);
 
 -- Contatos: só cadastro manual. Base legal e opt-out obrigatórios (LGPD).
 CREATE TABLE IF NOT EXISTS contacts (

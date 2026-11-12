@@ -1,0 +1,75 @@
+# Empresas para testar no Greenhouse e no Lever (uma por linha; linhas com # são ignoradas).
+# Rode: npm run radar -- descobrir-quadros   → os quadros encontrados entram em seeds/quadros.csv
+# Financeiro / fintech / seguros
+Nubank
+Creditas
+Stone
+PagBank
+PicPay
+Banco Inter
+C6 Bank
+XP Inc
+BTG Pactual
+Neon
+Ebanx
+Mercado Pago
+Dock
+Cora
+Vindi
+Cielo
+Getnet
+Will Bank
+Asaas
+Open Co
+CloudWalk
+Pismo
+Zoop
+Celcoin
+Kovi
+Porto Seguro
+SulAmerica
+Youse
+Pier
+Justos
+dLocal
+Ualá
+Clip
+Konfio
+Kueski
+Nowports
+Fintual
+Bci
+# Indústria / agro / logística / saúde / varejo
+Ambev
+Natura
+Embraer
+WEG
+Gerdau
+Suzano
+BRF
+Raizen
+Klabin
+Braskem
+Votorantim
+Randon
+Solinftec
+Aegro
+Agrosmart
+Loggi
+Frete.com
+Cargo X
+Rappi
+Kavak
+Magalu
+Grupo Boticario
+Hotmart
+VTEX
+Olist
+Gympass
+Wellhub
+Dasa
+Alice
+Sami
+QuintoAndar
+Loft
+iFood

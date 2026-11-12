@@ -2,6 +2,7 @@
 // A página traz as vagas embutidas no JSON __NEXT_DATA__, 12 por página.
 import type { PoliteClient } from '../http/client.ts';
 import type { JobPosting } from './types.ts';
+import { detectCountry, isAllowedCountry } from '../normalize/location.ts';
 
 const BASE = 'https://portal.gupy.io/job-search/';
 const MAX_PAGES_PER_TERM = 15;
@@ -14,6 +15,7 @@ interface GupyJob {
   publishedDate?: string;
   city?: string;
   state?: string;
+  country?: string;
   jobUrl: string;
 }
 
@@ -35,6 +37,18 @@ export function searchUrl(term: string, page: number): string {
   return BASE + (page > 1 ? `${q}&page=${page}` : q);
 }
 
+// País da vaga. A Gupy não informa o país: estado brasileiro = BR; cidade/estado de outro país da
+// América Latina (ex.: "Lima") = aquele país; sem cidade e sem estado = remota no portal brasileiro (BR).
+// Qualquer outro lugar = null (fora do escopo Brasil + América Latina).
+export function gupyCountry(job: GupyJob): string | null {
+  if (!job.city?.trim() && !job.state?.trim() && !job.country?.trim()) return 'BR';
+  return detectCountry(job.city, job.state, job.country);
+}
+
+export function isInScopeGupyJob(job: GupyJob): boolean {
+  return isAllowedCountry(gupyCountry(job));
+}
+
 export function toJobPosting(job: GupyJob, documentId: number | null): JobPosting {
   return {
     source: 'gupy',
@@ -46,7 +60,7 @@ export function toJobPosting(job: GupyJob, documentId: number | null): JobPostin
     publishedAt: job.publishedDate ?? null,
     city: job.city || null,
     state: job.state || null,
-    country: 'BR',
+    country: gupyCountry(job) ?? 'desconhecido',
     documentId,
   };
 }
@@ -68,7 +82,7 @@ export async function collectGupy(
       }
       const { jobs, total } = parseGupySearchPage(res.text);
       pages = Math.min(Math.ceil(total / 12), MAX_PAGES_PER_TERM);
-      for (const job of jobs) {
+      for (const job of jobs.filter(isInScopeGupyJob)) {
         const posting = toJobPosting(job, res.documentId);
         byId.set(posting.externalId, posting);
       }

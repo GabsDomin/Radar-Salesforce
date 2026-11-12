@@ -10,6 +10,25 @@
 | 4 | Painel: lista, filtros, detalhe, exportação CSV, acompanhamento de status/funil | ✅ `node src/cli.ts painel` → http://localhost:3333 |
 | 5 | Greenhouse, Lever e SmartRecruiters (`src/sources/boards.ts`) | ✅ `npm test` passa (24 testes). Lê os quadros de `seeds/quadros.csv` (`fonte;slug;empresa`), **hoje vazio**: precisa ser preenchido com empresas brasileiras que usam essas plataformas |
 | 4b | Painel estático para a Vercel (`npm run site` → `publicar/`) | ✅ somente leitura, protegido por senha (HTTP Basic via `RADAR_SENHA`) |
+| 8a | Notícias via GDELT: troca de liderança (TI/comercial), fusão/aquisição, investimento, expansão → gatilho na nota (`npm run noticias`) | ✅ testado com respostas simuladas; **ainda não validado contra o GDELT real** (limite de taxa por IP no dia do teste) |
+| 11 | Central de atualização e painéis: `npm run atualizar` (vagas + notícias + site, `--publicar` envia à Vercel), página **Dashboard** e página **Atualizar** (botão, andamento ao vivo) no painel local | ✅ `npm test` passa (33 testes) |
+| 12 | Modalidades separadas, cada uma com tela própria: **Vagas**, **Liderança**, **Outros gatilhos** (fusão, investimento, expansão) e **Dor** (indício de insatisfação com o sistema atual, nota v1.2 com bônus de até +15) | ✅ `npm test` passa (37 testes). Liderança e gatilhos ficam vazias até a primeira atualização de notícias |
+| 13 | Fluxo de trabalho: **Leads** (antes "Contas") com abas Todos/Vagas/Liderança/Outros gatilhos/Dor; situação A triar/Aprovadas/Adiadas/Descartadas; **Triagem** lead a lead com atalhos (A/D/S/J/K/O); aprovar, descartar com motivo, adiar, reabrir; histórico por lead; nota subiu/desceu; "Seu trabalho" e próximas ações no dashboard | ✅ `npm test` passa (46 testes). Decisões só no painel local; o site da Vercel é cópia somente leitura |
+| 14 | Mais fontes e mais leads (26 → 170): Get on Board (América Latina), quadros Greenhouse/Lever descobertos automaticamente (`descobrir-quadros`), vagas de CRM concorrente e de operação comercial, CVM + detecção de tecnologia no DNS/site (etapa 6), casos de clientes da Salesforce Brasil, lead manual (indicação/ex-cliente/evento), junção de duplicados entre fontes, filtros próprios em cada aba | ✅ `npm test` passa (61 testes) |
+
+Verificado em 12/11/2026 e **fora**: SmartRecruiters (robots.txt proíbe), AppExchange (busca e avaliações proibidas), Vagas.com (`/api/` proibido; termos não verificados), Programathor (sem vagas Salesforce), Sólides (sem API pública conhecida), PNCP (conexão recusada nesta rede). O HubSpot conectado é uma conta pessoal sem negócios, não o CRM da Sottelli.
+
+## Modalidades do radar
+| Tela | O que mostra | Fonte | Atualizar |
+|---|---|---|---|
+| `/radar/vagas` | Vagas Salesforce no Brasil, sem consultorias | Gupy e quadros | "Só vagas e dor" |
+| `/radar/lideranca` | Troca de diretor/executivo | GDELT (notícias) | "Só liderança e gatilhos" |
+| `/radar/gatilhos` | Fusão, investimento, expansão | GDELT (notícias) | "Só liderança e gatilhos" |
+| `/radar/dor` | Migração de CRM, sistema legado, org com problemas, processo manual | Descrição das vagas | "Só vagas e dor" |
+
+## Regras fixas (decididas pelo Gabriel)
+- **Brasil + América Latina** (alterado em 12/11/2026; antes era só Brasil): o país vem de `src/normalize/location.ts` (estado brasileiro, nome de país, capitais e grandes cidades). Local não reconhecido fica de fora (evita EUA/Europa). Na nota, "Atua no Brasil / América Latina" vale 10 no Brasil e 6 em outro país da região. Notícias em português e espanhol.
+- **Sem consultorias:** vaga com indício forte (se descreve como consultoria, parceira Salesforce, alocação, recrutadora) ou com nome de consultoria/outsourcing/recrutadora **não é gravada**; o que já estava no banco é limpo a cada coleta ou `npm run pontuar`. Indício fraco ("nossos clientes") fica marcado para revisão, com -30 na nota.
 
 Primeira coleta real: 50 vagas → 26 contas → 4 excluídas. Abaixo da meta de 30 contas
 visíveis — esperado, só a Gupy está ativa.

@@ -22,6 +22,13 @@ export function normalizeCompanyName(name: string): string {
   return (cleaned.length ? cleaned : tokens).join(' ');
 }
 
+// Nome da empresa que já a denuncia como consultoria, outsourcing ou recrutadora.
+const CONSULTANCY_NAME = /consultoria|consulting|consultores|outsourcing|staffing|recrutamento|head ?hunter|recruitment|sourcing|(talent|talents) (partners|acquisition|solutions)/i;
+
+export function looksLikeConsultancyName(name: string | null | undefined): boolean {
+  return !!name && CONSULTANCY_NAME.test(stripAccents(name));
+}
+
 // Nomes que não identificam uma empresa (vaga confidencial, cidade, programa de vagas).
 const UNKNOWN_PATTERNS = [
   /confidencial/i,

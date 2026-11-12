@@ -41,7 +41,8 @@ export class PoliteClient {
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
-  async get(url: string, source: string): Promise<PoliteResponse> {
+  // `encoding`: para fontes que não usam UTF-8 (ex.: a CVM publica em latin1).
+  async get(url: string, source: string, opts: { encoding?: string } = {}): Promise<PoliteResponse> {
     const u = new URL(url);
     const robots = await this.robotsFor(u.origin);
     if (!robots.isAllowed(u.pathname + u.search)) {
@@ -55,7 +56,7 @@ export class PoliteClient {
         headers: { 'User-Agent': httpConfig.userAgent, Accept: 'text/html,application/json' },
         signal: AbortSignal.timeout(httpConfig.timeoutMs),
       });
-      const text = await res.text();
+      const text = opts.encoding ? new TextDecoder(opts.encoding).decode(await res.arrayBuffer()) : await res.text();
       if ((res.status === 429 || res.status >= 500) && attempt < httpConfig.maxRetries) {
         attempt++;
         await this.sleep(this.minIntervalMs * 2 ** attempt);

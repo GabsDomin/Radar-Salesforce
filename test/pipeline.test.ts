@@ -6,7 +6,7 @@ import path from 'node:path';
 import { openDb } from '../src/db/index.ts';
 import { PoliteClient, RobotsDisallowedError, type FetchFn } from '../src/http/client.ts';
 import { collectGupy, parseGupySearchPage } from '../src/sources/gupy.ts';
-import { ingestJobs } from '../src/pipeline/ingestJobs.ts';
+import { ingestJobs, purgeConsultancies } from '../src/pipeline/ingestJobs.ts';
 import { importExclusions } from '../src/pipeline/exclusions.ts';
 import { scoreAll } from '../src/scoring/score.ts';
 import { listCompanies, getCompany } from '../src/web/queries.ts';
@@ -26,6 +26,9 @@ const JOBS = [
   { id: 3, name: 'Consultor Salesforce', description: 'Somos uma consultoria especializada em Salesforce e atuamos em projetos para clientes.', careerPageName: 'Consultoria X', publishedDate: '2026-10-02T10:00:00Z', jobUrl: 'https://x.gupy.io/job/3' },
   { id: 4, name: 'Desenvolvedor Salesforce', description: 'Apex e LWC.', careerPageName: 'Confidencial', publishedDate: '2026-10-02T10:00:00Z', jobUrl: 'https://c.gupy.io/job/4' },
   { id: 5, name: 'Analista de Dados', description: 'Python e SQL.', careerPageName: 'Outra', publishedDate: '2026-10-02T10:00:00Z', jobUrl: 'https://o.gupy.io/job/5' },
+  { id: 7, name: 'Admin Salesforce', description: 'Cuidar da org e atender nossos clientes internos de varejo.', careerPageName: 'Varejo Y', publishedDate: '2026-10-02T10:00:00Z', jobUrl: 'https://y.gupy.io/job/7' },
+  { id: 8, name: 'Desenvolvedor Salesforce', description: 'Apex e LWC.', careerPageName: 'Soluções Tech Consultoria', publishedDate: '2026-10-02T10:00:00Z', jobUrl: 'https://s.gupy.io/job/8' },
+  { id: 9, name: 'Desenvolvedor Salesforce', description: 'Apex e LWC.', careerPageName: 'Empresa Gringa', country: 'United States', publishedDate: '2026-10-02T10:00:00Z', jobUrl: 'https://g.gupy.io/job/9' },
   { id: 6, name: 'Admin Salesforce', description: 'Administração da org Sales Cloud em banco digital.', careerPageName: 'Cliente Atual Ltda', publishedDate: '2026-10-03T10:00:00Z', jobUrl: 'https://ca.gupy.io/job/6' },
 ];
 
@@ -42,7 +45,7 @@ const noSleep = async () => {};
 
 test('parseGupySearchPage lê vagas e total', () => {
   const p = parseGupySearchPage(gupyPage(JOBS, 40));
-  assert.equal(p.jobs.length, 6);
+  assert.equal(p.jobs.length, 9);
   assert.equal(p.total, 40);
 });
 
@@ -68,7 +71,7 @@ test('pipeline completo: coleta → contas → exclusões → nota → painel/CS
   });
 
   const postings = await collectGupy(client, ['salesforce']);
-  assert.equal(postings.length, 6);
+  assert.equal(postings.length, 8); // a vaga fora do Brasil já é descartada na coleta
   assert.equal(postings[0].url, 'https://alimentos.gupy.io/job/1'); // sem query string de rastreio
 
   // Lista de exclusão: "Cliente Atual" já é cliente.
@@ -80,12 +83,13 @@ test('pipeline completo: coleta → contas → exclusões → nota → painel/CS
   assert.equal(stats.notSalesforce, 1);
   assert.equal(stats.unidentified, 1);
   assert.equal(stats.excluded, 1);
-  assert.equal(stats.flaggedConsultancy, 1);
+  assert.equal(stats.flaggedConsultancy, 1);    // indício fraco ("nossos clientes"): fica, marcada
+  assert.equal(stats.skippedConsultancy, 2);    // indício forte na vaga e no nome da empresa: descartadas
 
   // "Alimentos Exemplo S.A." e "Grupo Alimentos Exemplo" viram a mesma conta.
   assert.equal(scoreAll(db, NOW), 3);
   const rows = listCompanies(db, {});
-  assert.deepEqual(rows.map((r) => r.name), ['Alimentos Exemplo S.A.', 'Consultoria X']);
+  assert.deepEqual(rows.map((r) => r.name), ['Alimentos Exemplo S.A.', 'Varejo Y']);
   const top = rows[0];
   assert.equal(top.job_count, 2);
   assert.equal(top.sector, 'industria');
@@ -99,7 +103,7 @@ test('pipeline completo: coleta → contas → exclusões → nota → painel/CS
   assert.deepEqual(detail.offers.map((o) => o.offer).sort(), ['Improve', 'Ágil']);
   for (const b of detail.breakdown) assert.ok(b.reason.length > 0, `regra ${b.rule} sem explicação`);
 
-  // Consultoria recebe ajuste negativo e fica abaixo.
+  // Indício fraco de consultoria recebe ajuste negativo e fica abaixo; as fortes nem entram.
   const consult = getCompany(db, rows[1].id)!;
   assert.ok(consult.breakdown.some((b) => b.rule === 'Possível consultoria/recrutadora' && b.points === -30));
 
@@ -191,4 +195,28 @@ test('site estático: gera lista, detalhe e CSV sem formulário de edição', as
   assert.match(detail, /Por que essa nota/);
   assert.doesNotMatch(detail, /<form/);
   assert.match(fs.readFileSync(path.join(out, 'radar.csv'), 'utf8'), /Alimentos Exemplo/);
+});
+
+test('somente Brasil e sem consultorias: vaga de fora, nome de consultoria e limpeza do que já estava no banco', () => {
+  const db = openDb(':memory:');
+  const base = { source: 'gupy', description: 'Apex e LWC em indústria.', publishedAt: '2026-10-01T10:00:00Z', city: null, state: null, documentId: null };
+  const stats = ingestJobs(db, [
+    { ...base, externalId: 'a', title: 'Dev Salesforce', companyName: 'Fabrica Brasil S.A.', url: 'https://a/1', country: 'BR' },
+    { ...base, externalId: 'b', title: 'Dev Salesforce', companyName: 'Fabrica Foreign Inc', url: 'https://a/2', country: 'US' },
+    { ...base, externalId: 'c', title: 'Dev Salesforce', companyName: 'Alfa Consulting', url: 'https://a/3', country: 'BR' },
+  ]);
+  assert.equal(stats.outOfRegion, 1);
+  assert.equal(stats.skippedConsultancy, 1);
+  assert.equal(stats.newSignals, 1);
+  assert.deepEqual((db.prepare('SELECT name FROM companies').all() as { name: string }[]).map((r) => r.name), ['Fabrica Brasil S.A.']);
+
+  // Dado antigo: sinal marcado como consultoria forte some, e a conta órfã também; conta com acompanhamento fica.
+  db.prepare("INSERT INTO companies (name, normalized_name) VALUES ('Antiga Consultoria', 'antiga consultoria')").run();
+  db.prepare("INSERT INTO companies (name, normalized_name, notes) VALUES ('Antiga Anotada', 'antiga anotada', 'falei com o diretor')").run();
+  const ins = db.prepare("INSERT INTO signals (company_id, type, title, url, source, external_id, review_flag) VALUES (?, 'vaga', 't', 'https://x', 'gupy', ?, 'possível consultoria/recrutadora: vaga de alocação')");
+  ins.run((db.prepare("SELECT id FROM companies WHERE name = 'Antiga Consultoria'").get() as { id: number }).id, 'old1');
+  ins.run((db.prepare("SELECT id FROM companies WHERE name = 'Antiga Anotada'").get() as { id: number }).id, 'old2');
+  const purged = purgeConsultancies(db);
+  assert.equal(purged.signals, 2);
+  assert.deepEqual((db.prepare('SELECT name FROM companies ORDER BY name').all() as { name: string }[]).map((r) => r.name), ['Antiga Anotada', 'Fabrica Brasil S.A.']);
 });

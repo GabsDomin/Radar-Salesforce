@@ -32,7 +32,8 @@ Ver status atual com `node src/cli.ts fontes`.
 | PNCP (licitações) | Planejada | API aberta; intenção de compra explícita, com prazo e valor |
 | CADE (atos de concentração) | Planejada | Dados abertos; fusões exigem integrar dois CRMs |
 | Reclame Aqui | Planejada | Verificar termos; dor de atendimento = argumento para Service Cloud |
-| Google News RSS / GDELT | Planejada | Expansão, fusão, nova diretoria |
+| **GDELT (notícias)** | ✅ Ativa | Troca de liderança, fusão, investimento, expansão; só fontes brasileiras em português; 1 consulta a cada 5 s |
+| **Google News RSS** | ❌ Bloqueada | robots.txt do Google News proíbe a busca |
 
 ## Cadastro (enriquecimento)
 | Fonte | Status | Observação |
