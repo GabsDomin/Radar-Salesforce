@@ -10,8 +10,9 @@ import { listPage, detailPage, notFoundPage } from './views.ts';
 import { exportCsv } from './export.ts';
 import { dashboardData } from './dashboard.ts';
 import { dashboardPage, updatePage, modalityPage } from './pages.ts';
-import { MODALITIES, modalityRows, lastRunOf } from './modalities.ts';
+import { MODALITIES, modalityRows, lastRunOf, tabCounts } from './modalities.ts';
 import { FAVICON_SVG } from './favicon.ts';
+import { todayData, todayPage, coSellCsv } from './today.ts';
 import { UpdateRunner } from './jobs.ts';
 
 const FILTER_KEYS: (keyof Filters)[] = ['q', 'setor', 'oferta', 'sinal', 'status', 'excluidas', 'min', 'visao'];
@@ -36,12 +37,17 @@ export function createServer(db: DB, runner = new UpdateRunner(db)) {
         res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
         return res.end(FAVICON_SVG);
       }
+      if (req.method === 'GET' && url.pathname === '/hoje') return send(res, 200, todayPage(todayData(db)));
+      if (req.method === 'GET' && url.pathname === '/co-venda.csv') {
+        res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="co-venda-${new Date().toISOString().slice(0, 10)}.csv"` });
+        return res.end(coSellCsv(db));
+      }
       if (req.method === 'GET' && url.pathname === '/dashboard') return send(res, 200, dashboardPage(dashboardData(db)));
       const mod = url.pathname.match(/^\/radar\/(\w+)$/);
       if (req.method === 'GET' && mod) {
         const info = MODALITIES.find((m) => m.id === mod[1]);
         if (!info) return send(res, 404, notFoundPage());
-        return send(res, 200, modalityPage(info, modalityRows(db, info.id), lastRunOf(db, info.collector)));
+        return send(res, 200, modalityPage(info, modalityRows(db, info.id), lastRunOf(db, info.collector), false, tabCounts(db)));
       }
       if (req.method === 'GET' && url.pathname === '/atualizar') return send(res, 200, updatePage(runner.state, runner.limit));
       if (req.method === 'GET' && url.pathname === '/atualizar/status') {
@@ -56,7 +62,7 @@ export function createServer(db: DB, runner = new UpdateRunner(db)) {
       }
 
       if (req.method === 'GET' && url.pathname === '/') {
-        return send(res, 200, listPage(listCompanies(db, filters), filters, lastRuns(db), false, visaoCounts(db)));
+        return send(res, 200, listPage(listCompanies(db, filters), filters, lastRuns(db), false, visaoCounts(db), tabCounts(db)));
       }
       if (req.method === 'GET' && url.pathname === '/export.csv') {
         res.writeHead(200, {
@@ -64,6 +70,15 @@ export function createServer(db: DB, runner = new UpdateRunner(db)) {
           'Content-Disposition': `attachment; filename="radar-${new Date().toISOString().slice(0, 10)}.csv"`,
         });
         return res.end(exportCsv(db, filters));
+      }
+      const ct = url.pathname.match(/^\/empresa\/(\d+)\/contato$/);
+      if (req.method === 'POST' && ct) {
+        const form = new URLSearchParams(await readBody(req));
+        const name = (form.get('name') ?? '').trim();
+        if (name) db.prepare("INSERT INTO contacts (company_id, name, role, channel, origin) VALUES (?, ?, ?, ?, 'manual')")
+          .run(Number(ct[1]), name, (form.get('role') ?? '').trim() || null, (form.get('channel') ?? '').trim() || null);
+        res.writeHead(303, { Location: `/empresa/${ct[1]}` });
+        return res.end();
       }
       if (req.method === 'POST' && url.pathname === '/leads/novo') {
         const form = new URLSearchParams(await readBody(req));

@@ -46,7 +46,7 @@ export function dashboardPage(d: DashboardData, isStatic = false): string {
   ${kpi(t.accounts, 'leads no radar', '/')}
   ${kpi(t.hot, 'leads quentes (nota ≥ 50)')}
   ${kpi(t.newLast7, 'novos nos últimos 7 dias')}
-  ${kpi(t.withPain, 'com indício de dor', '/radar/dor')}
+  ${kpi(t.withPain, 'com indício de dor', '/radar/vagas')}
   ${kpi(t.withTrigger, 'com gatilho em 90 dias', '/radar/gatilhos')}
   ${kpi(t.excluded, 'excluídos (cliente, concorrente)')}
 </div>
@@ -70,6 +70,11 @@ ${MODALITIES.map((m) => { const c = d.modalities[m.id]; return `<a class="kpi" h
     ${d.nextActions.map((a) => `<div class="signal"><a href="/empresa/${a.id}"><strong>${esc(a.name)}</strong></a>
       <span class="small ${a.due < 0 ? 'run-bad' : 'muted'}">${a.due < 0 ? `atrasada ${-a.due} dia(s)` : a.due === 0 ? 'hoje' : `em ${a.due} dia(s)`}</span>
       <div class="small">${esc(a.next_action ?? '')}</div></div>`).join('') || '<p class="muted small">Nenhuma próxima ação marcada. Defina na página do lead.</p>'}</div>
+  <div class="card"><h2>Resultado por fonte</h2>
+    <div class="table-wrap"><table class="small"><thead><tr><th>Fonte de origem</th><th>Leads</th><th>Aprov.</th><th>Contat.</th><th>Resp.</th><th>Reuniões</th></tr></thead><tbody>
+    ${d.bySourceOutcome.map((r) => `<tr><td>${esc(r.source)}</td><td>${r.leads}</td><td>${r.aprovados}</td><td>${r.contatados}</td><td>${r.responderam}</td><td><strong>${r.reunioes}</strong></td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="small muted">Marque Contatei, Respondeu e Reunião nos leads: em poucas semanas esta tabela mostra quais fontes trazem conversa de verdade.</p></div>
   <div class="card"><h2>Decisões</h2>
     ${bars([{ label: 'Aprovados', count: q.aprovadas }, { label: 'Descartados', count: q.descartadas }, { label: 'Adiados', count: q.adiadas }])}
     ${d.discardReasons.length ? `<h2 style="margin-top:12px">Motivos de descarte</h2>${bars(d.discardReasons)}<p class="small muted">Use isso para ajustar o radar: muitos “fora do perfil” indicam regras a calibrar.</p>` : ''}</div>
@@ -87,8 +92,8 @@ ${MODALITIES.map((m) => { const c = d.modalities[m.id]; return `<a class="kpi" h
 }
 
 export function updatePage(state: UpdateState, newsLimit: number): string {
-  const steps: StepId[] = ['vagas', 'noticias', 'tecnologia', 'site', 'publicar'];
-  const checked: Record<StepId, boolean> = { vagas: true, noticias: true, tecnologia: true, site: true, publicar: false };
+  const steps: StepId[] = ['vagas', 'noticias', 'enriquecer', 'tecnologia', 'site', 'publicar'];
+  const checked: Record<StepId, boolean> = { vagas: true, noticias: true, enriquecer: true, tecnologia: true, site: true, publicar: false };
   return layout('Atualizar · Radar', `
 <div class="card">
   <h2>Atualizar o radar</h2>
@@ -134,6 +139,7 @@ export function updatePage(state: UpdateState, newsLimit: number): string {
 
 export function modalityPage(
   info: ModalityInfo, rows: ModalityRow[], lastRun: { finished_at: string | null; error: string | null } | null, isStatic = false,
+  tabs?: Record<string, number>,
 ): string {
   const body = rows.length
     ? rows.map((r) => `<tr data-nota="${r.total ?? 0}" data-name="${esc(r.company.toLowerCase())}"${info.facets.map((f) => ` data-f-${f.key}="${esc((r.facets[f.key] ?? []).join('|'))}"`).join('')}>
@@ -151,7 +157,7 @@ export function modalityPage(
     ? lastRun.error ? `última coleta falhou: ${esc(lastRun.error.slice(0, 80))}` : `última coleta: ${fmtDate(lastRun.finished_at)}`
     : 'ainda não coletada';
   return layout(`${info.title} · Radar`, `
-${leadTabs(info.id)}
+${leadTabs(info.id, tabs)}
 <div class="card">
   <h2 style="font-size:18px">${esc(info.title)}</h2>
   <p class="small muted" style="margin:0 0 12px">${esc(info.description)}</p>

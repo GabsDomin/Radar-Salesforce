@@ -133,43 +133,64 @@ test('pipeline completo: coleta → contas → exclusões → nota → painel/CS
   assert.equal(again.newSignals, 0);
 });
 
-test('Greenhouse, Lever e SmartRecruiters: filtram Salesforce no Brasil e viram vagas comuns', async () => {
+test('Greenhouse, Lever, Workable, Ashby e Workday: filtram CRM na América Latina e viram vagas comuns', async () => {
   const { parseBoards, collectBoards } = await import('../src/sources/boards.ts');
   const boards = parseBoards([
     { fonte: 'greenhouse', slug: 'acme', empresa: 'Acme Indústria' },
     { fonte: 'lever', slug: 'banco', empresa: 'Banco Exemplo' },
-    { fonte: 'smartrecruiters', slug: 'agro', empresa: 'Agro Exemplo' },
+    { fonte: 'workable', slug: 'agro', empresa: 'Agro Exemplo' },
+    { fonte: 'ashby', slug: 'fin', empresa: 'Fin Exemplo' },
+    { fonte: 'workday', slug: 'ind|wd3|Externo', empresa: 'Indústria WD' },
     { fonte: 'lever', slug: 'quebrado', empresa: 'Quebrado' },
-    { fonte: 'outra', slug: 'x', empresa: 'Ignorada' },
+    { fonte: 'smartrecruiters', slug: 'x', empresa: 'Ignorada (bloqueada)' },
   ]);
-  assert.equal(boards.length, 4);
+  assert.equal(boards.length, 6);
   const gh = { jobs: [
     { id: 1, title: 'Salesforce Developer', absolute_url: 'https://boards.greenhouse.io/acme/jobs/1', updated_at: '2026-10-01T00:00:00Z', location: { name: 'São Paulo, Brazil' }, content: '&lt;p&gt;Apex e LWC&lt;/p&gt;' },
     { id: 2, title: 'Salesforce Developer', absolute_url: 'https://boards.greenhouse.io/acme/jobs/2', location: { name: 'Austin, TX' }, content: '' },
     { id: 3, title: 'Contador', absolute_url: 'https://boards.greenhouse.io/acme/jobs/3', location: { name: 'São Paulo' }, content: '' },
   ] };
   const lever = [{ id: 'abc', text: 'Admin Salesforce', hostedUrl: 'https://jobs.lever.co/banco/abc', createdAt: 1790000000000, descriptionPlain: 'Sales Cloud', categories: { location: 'Brasil' } }];
-  const sr = { content: [{ id: '9', name: 'Salesforce Architect', releasedDate: '2026-10-02T00:00:00Z', location: { city: 'Campinas', region: 'SP', country: 'br' } }] };
+  const wk = { jobs: [
+    { title: 'Salesforce Architect', shortcode: 'AB1', url: 'https://apply.workable.com/agro/j/AB1/', published_on: '2026-10-02', locations: [{ countryCode: 'BR', city: 'Campinas', region: 'SP' }], description: '<p>Sales Cloud</p>' },
+    { title: 'Salesforce Architect', shortcode: 'AB2', locations: [{ countryCode: 'US', city: 'Austin' }] },
+  ] };
+  const ashby = { jobs: [{ id: 'z9', title: 'CRM Analyst (HubSpot)', descriptionPlain: 'HubSpot e RevOps', jobUrl: 'https://jobs.ashbyhq.com/fin/z9', address: { postalAddress: { addressCountry: 'Mexico', addressLocality: 'Ciudad de México' } } }] };
+  const wd = (title: string, path: string) => ({ total: 1, jobPostings: [{ title, externalPath: path, locationsText: 'São Paulo, Brazil' }] });
   const ok = (b: unknown) => ({ status: 200, body: JSON.stringify(b) });
-  const client = new PoliteClient({
-    sleep: noSleep,
-    fetchFn: fakeFetch({
-      'https://boards-api.greenhouse.io/robots.txt': { status: 404, body: '' },
-      'https://api.lever.co/robots.txt': { status: 404, body: '' },
-      'https://api.smartrecruiters.com/robots.txt': { status: 404, body: '' },
-      'https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true': ok(gh),
-      'https://api.lever.co/v0/postings/banco?mode=json': ok(lever),
-      'https://api.smartrecruiters.com/v1/companies/agro/postings?q=salesforce&limit=100': ok(sr),
-      'https://api.lever.co/v0/postings/quebrado?mode=json': { status: 200, body: 'não é json' },
-    }),
-  });
+  const calls: string[] = [];
+  const base = fakeFetch({
+    'https://boards-api.greenhouse.io/robots.txt': { status: 404, body: '' },
+    'https://api.lever.co/robots.txt': { status: 404, body: '' },
+    'https://apply.workable.com/robots.txt': { status: 404, body: '' },
+    'https://api.ashbyhq.com/robots.txt': { status: 404, body: '' },
+    'https://ind.wd3.myworkdayjobs.com/robots.txt': { status: 404, body: '' },
+    'https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true': ok(gh),
+    'https://api.lever.co/v0/postings/banco?mode=json': ok(lever),
+    'https://apply.workable.com/api/v1/widget/accounts/agro?details=true': ok(wk),
+    'https://api.ashbyhq.com/posting-api/job-board/fin': ok(ashby),
+    'https://api.lever.co/v0/postings/quebrado?mode=json': { status: 200, body: 'não é json' },
+  }, calls);
+  // Workday: a mesma URL responde por termo de busca enviado no corpo (POST).
+  const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (String(input) === 'https://ind.wd3.myworkdayjobs.com/wday/cxs/ind/Externo/jobs') {
+      assert.equal(init?.method, 'POST');
+      const term = JSON.parse(String(init?.body)).searchText;
+      return new Response(JSON.stringify(term === 'salesforce' ? wd('Analista Salesforce', '/job/SP/Analista_1') : wd('Analista Salesforce', '/job/SP/Analista_1')), { status: 200 });
+    }
+    return base(input, init);
+  }) as typeof fetch;
+  const client = new PoliteClient({ sleep: noSleep, fetchFn });
   const logs: string[] = [];
   const postings = await collectBoards(client, boards, (m) => logs.push(m));
-  assert.deepEqual(postings.map((p) => [p.source, p.companyName, p.title]), [
-    ['greenhouse', 'Acme Indústria', 'Salesforce Developer'],
-    ['lever', 'Banco Exemplo', 'Admin Salesforce'],
-    ['smartrecruiters', 'Agro Exemplo', 'Salesforce Architect'],
+  assert.deepEqual(postings.map((p) => [p.source, p.companyName, p.title, p.country]), [
+    ['greenhouse', 'Acme Indústria', 'Salesforce Developer', 'BR'],
+    ['lever', 'Banco Exemplo', 'Admin Salesforce', 'BR'],
+    ['workable', 'Agro Exemplo', 'Salesforce Architect', 'BR'],
+    ['ashby', 'Fin Exemplo', 'CRM Analyst (HubSpot)', 'MX'],
+    ['workday', 'Indústria WD', 'Analista Salesforce', 'BR'], // dois termos, uma vaga só
   ]);
+  assert.equal(postings[4].url, 'https://ind.wd3.myworkdayjobs.com/Externo/job/SP/Analista_1');
   assert.equal(postings[0].description, 'Apex e LWC');
   assert.ok(logs.some((l) => l.includes('quebrado falhou')));
 

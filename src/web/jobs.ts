@@ -13,7 +13,7 @@ export interface UpdateState {
 }
 
 const MAX_LOG_LINES = 500;
-const VALID: StepId[] = ['vagas', 'noticias', 'tecnologia', 'site', 'publicar'];
+const VALID: StepId[] = ['vagas', 'noticias', 'enriquecer', 'tecnologia', 'site', 'publicar'];
 
 export class UpdateRunner {
   state: UpdateState = { running: false, step: null, stepLabel: null, startedAt: null, finishedAt: null, log: [], results: [] };

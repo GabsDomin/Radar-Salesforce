@@ -12,7 +12,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { PoliteClient } from './http/client.ts';
 import { parseBoards } from './sources/boards.ts';
-import { discoverBoards } from './sources/discoverBoards.ts';
+import { discoverFromSites, discoverFromNames } from './pipeline/boardsDiscovery.ts';
+import { readAlertFolder } from './sources/linkedinAlerts.ts';
+import { ingestJobs } from './pipeline/ingestJobs.ts';
 import { parseCsv } from './util/csv.ts';
 import { openDb } from './db/index.ts';
 import { SOURCE_CATALOG } from './sources/types.ts';
@@ -21,7 +23,7 @@ import { scoreAll } from './scoring/score.ts';
 import { purgeConsultancies } from './pipeline/ingestJobs.ts';
 import { mergeDuplicates } from './pipeline/companies.ts';
 import { createServer } from './web/server.ts';
-import { atualizar, runNoticias, runSite, runTecnologia, runVagas, type StepId } from './pipeline/update.ts';
+import { atualizar, runEnriquecer, runNoticias, runSite, runTecnologia, runVagas, type StepId } from './pipeline/update.ts';
 import { ROOT } from './config.ts';
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -30,7 +32,7 @@ const log = (m: string) => console.log(m);
 
 switch (cmd) {
   case 'atualizar': {
-    const steps: StepId[] = args.includes('--rapido') ? ['vagas', 'site'] : ['vagas', 'noticias', 'tecnologia', 'site'];
+    const steps: StepId[] = args.includes('--rapido') ? ['vagas', 'site'] : ['vagas', 'noticias', 'enriquecer', 'tecnologia', 'site'];
     if (args.includes('--publicar')) steps.push('publicar');
     const results = await atualizar(db, { steps }, log);
     console.log('\nResultado:');
@@ -43,6 +45,9 @@ switch (cmd) {
     break;
   case 'noticias':
     console.table(await runNoticias(db, Number(args[0] ?? 30), log));
+    break;
+  case 'enriquecer':
+    console.table(await runEnriquecer(db, log));
     break;
   case 'tecnologia':
     console.table(await runTecnologia(db, log));
@@ -73,23 +78,25 @@ switch (cmd) {
     console.log('Para publicar: npm run atualizar -- --publicar (ou cd publicar && vercel --prod)');
     break;
   case 'descobrir-quadros': {
-    // Testa os nomes de seeds/candidatos-quadros.txt no Greenhouse e no Lever e anexa os achados em seeds/quadros.csv.
-    const candidatesFile = path.join(ROOT, 'seeds', 'candidatos-quadros.txt');
-    const boardsFile = path.join(ROOT, 'seeds', 'quadros.csv');
-    const names = fs.readFileSync(candidatesFile, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-    const known = fs.existsSync(boardsFile) ? parseBoards(parseCsv(fs.readFileSync(boardsFile, 'utf8'))) : [];
-    console.log(`Testando ${names.length} empresa(s) no Greenhouse e no Lever...`);
-    const found = await discoverBoards(new PoliteClient({ db }), names, known, log);
-    if (found.length) {
-      const existing = fs.existsSync(boardsFile) ? fs.readFileSync(boardsFile, 'utf8').replace(/\s*$/, '\n') : 'fonte;slug;empresa\n';
-      fs.writeFileSync(boardsFile, existing + found.map((b) => `${b.kind};${b.slug};${b.company}`).join('\n') + '\n');
-    }
-    console.log(`${found.length} quadro(s) novo(s) gravado(s) em seeds/quadros.csv.`);
+    // Quadros de vagas pelo site das empresas e pelo nome (lista de candidatos + leads) → seeds/quadros.csv.
+    const client = new PoliteClient({ db });
+    const bySite = await discoverFromSites(db, client, log);
+    const byName = await discoverFromNames(db, client, log);
+    console.log(`${bySite} quadro(s) novo(s) pelo site e ${byName} pelo nome, gravados em seeds/quadros.csv.`);
+    break;
+  }
+  case 'importar-alertas': {
+    // Alertas de vaga do LinkedIn salvos do seu e-mail (o radar não acessa o LinkedIn).
+    const dir = args[0] ?? path.join(ROOT, 'seeds', 'alertas-linkedin');
+    const postings = readAlertFolder(dir);
+    console.log(`${postings.length} vaga(s) lida(s) dos alertas em ${dir}.`);
+    console.table(ingestJobs(db, postings));
+    scoreAll(db);
     break;
   }
   case 'fontes':
     console.table(SOURCE_CATALOG.map(({ id, kind, status, note }) => ({ id, tipo: kind, status, obs: note })));
     break;
   default:
-    console.log('Comandos: atualizar [--rapido] [--publicar] | coletar | noticias [n] | pontuar | excluir <arquivo.csv> [cliente|concorrente|recrutadora] | painel [porta] | site | descobrir-quadros | fontes');
+    console.log('Comandos: atualizar [--rapido] [--publicar] | coletar | noticias [n] | pontuar | excluir <arquivo.csv> [cliente|concorrente|recrutadora] | painel [porta] | site | descobrir-quadros | enriquecer | tecnologia | importar-alertas [pasta] | fontes');
 }

@@ -86,3 +86,66 @@ test('Get on Board: consultoria que se apresenta na descrição da empresa é de
   assert.match(postings[0].description, /Sobre a empresa: Somos una consultora de TI/);
   assert.equal(ingestJobs(openDb(':memory:'), postings).skippedConsultancy, 1);
 });
+
+test('sistema de vagas pelo site: links de ATS na home ou na página de carreiras', async () => {
+  const { findAtsLinks, careersLinks, discoverAtsFromSite } = await import('../src/sources/atsFromSite.ts');
+  const { appendBoards, readBoards } = await import('../src/pipeline/boardsDiscovery.ts');
+  assert.deepEqual(findAtsLinks(`
+    <a href="https://boards.greenhouse.io/alfa">vagas</a>
+    <a href="https://jobs.lever.co/beta/123">x</a>
+    <a href="https://alfa.wd3.myworkdayjobs.com/pt-BR/Externo/job/SP">wd</a>
+    <a href="https://apply.workable.com/gama/">wk</a>
+    <a href="https://jobs.ashbyhq.com/delta">ashby</a>`).map((x) => `${x.kind}/${x.slug}`),
+  ['greenhouse/alfa', 'lever/beta', 'workable/gama', 'ashby/delta', 'workday/alfa|wd3|Externo']);
+  assert.deepEqual(careersLinks('<a href="/trabalhe-conosco">Trabalhe conosco</a><a href="/sobre">Sobre</a>', 'https://www.alfa.com.br/'),
+    ['https://www.alfa.com.br/trabalhe-conosco']);
+
+  const client = new PoliteClient({ sleep: async () => {}, fetchFn: fakeFetch({
+    'https://www.alfa.com.br/robots.txt': { status: 404, body: '' },
+    'https://www.alfa.com.br/': { status: 200, body: '<a href="/carreiras">Carreiras</a>' },
+    'https://www.alfa.com.br/carreiras': { status: 200, body: '<iframe src="https://alfa.wd5.myworkdayjobs.com/AlfaCareers"></iframe>' },
+  }) });
+  const boards = await discoverAtsFromSite(client, 'alfa.com.br', 'Alfa');
+  assert.deepEqual(boards, [{ kind: 'workday', slug: 'alfa|wd5|AlfaCareers', company: 'Alfa' }]);
+
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'radar-q-')), 'quadros.csv');
+  fs.writeFileSync(file, 'fonte;slug;empresa\ngreenhouse;alfa;Alfa\n');
+  assert.equal(appendBoards([{ kind: 'greenhouse', slug: 'alfa', company: 'Alfa' }, ...boards], file), 1); // não repete o que já existe
+  assert.deepEqual(readBoards(file).map((b) => `${b.kind}/${b.slug}`), ['greenhouse/alfa', 'workday/alfa|wd5|AlfaCareers']);
+});
+
+test('alertas do LinkedIn por e-mail: título, empresa, local e link de cada vaga (sem acessar o LinkedIn)', async () => {
+  const { parseLinkedInAlert, decodeQuotedPrintable } = await import('../src/sources/linkedinAlerts.ts');
+  assert.equal(decodeQuotedPrintable('Integra=C3=A7=C3=A3o=\nSalesforce'), 'IntegraçãoSalesforce');
+  const email = [
+    'Suas vagas para "salesforce"',
+    '',
+    'Desenvolvedor Salesforce Sênior',
+    'Alfa Alimentos',
+    'São Paulo, Brasil',
+    'Candidatura simplificada',
+    'Ver vaga: https://www.linkedin.com/comm/jobs/view/4012345678/?trackingId=abc',
+    '',
+    'Salesforce Admin',
+    'Andes Seguros',
+    'Santiago, Región Metropolitana, Chile',
+    'https://www.linkedin.com/comm/jobs/view/4012345679/?refId=x',
+    '',
+    'Salesforce Architect',
+    'Texas Corp',
+    'Austin, Texas, United States',
+    'https://www.linkedin.com/comm/jobs/view/4012345680/',
+  ].join('\n');
+  const jobs = parseLinkedInAlert(email, '2026-11-10T09:00:00Z');
+  assert.deepEqual(jobs.map((j) => [j.title, j.companyName, j.country]), [
+    ['Desenvolvedor Salesforce Sênior', 'Alfa Alimentos', 'BR'],
+    ['Salesforce Admin', 'Andes Seguros', 'CL'],
+    ['Salesforce Architect', 'Texas Corp', 'desconhecido'],
+  ]);
+  assert.equal(jobs[0].url, 'https://www.linkedin.com/jobs/view/4012345678/'); // sem rastreio
+  const stats = ingestJobs(openDb(':memory:'), jobs);
+  assert.deepEqual([stats.newSignals, stats.outOfRegion], [2, 1]);
+});

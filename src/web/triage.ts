@@ -25,7 +25,7 @@ function card(d: LeadDetail, i: number): string {
       ${s.evidence ? `<div class="evidence">${esc(s.evidence)}</div>` : ''}<div class="small muted">${esc(s.source)} · ${fmtDate(s.published_at ?? s.collected_at)}</div></div>`).join('') || '<p class="small muted">Sem sinais.</p>'}
       ${d.signals.length > 3 ? `<p class="small"><a href="/empresa/${c.id}">+ ${d.signals.length - 3} evidência(s)</a></p>` : ''}</div>
   </div>
-  <div class="decision">${decisionButtons(c.id, c.status)}
+  <div class="decision">${decisionButtons(c.id, c.status, false, c.outreach)}
     <a class="btn secondary" href="/empresa/${c.id}" data-open>Abrir lead</a></div>
 </section>`;
 }

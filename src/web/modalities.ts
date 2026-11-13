@@ -23,7 +23,7 @@ export const MODALITIES: ModalityInfo[] = [
     id: 'vagas', label: 'Vagas', title: 'Vagas no Brasil e na América Latina', collector: 'vagas',
     description: 'Vagas de Salesforce (empresa contratando agora) e vagas de CRM concorrente (candidata a migração). Consultorias, integradoras e recrutadoras ficam de fora.',
     empty: 'Nenhuma vaga com esses filtros. Rode a atualização de vagas.',
-    facets: [{ key: 'tipo', label: 'Tipo de vaga' }, { key: 'crm', label: 'CRM' }, { key: 'cargo', label: 'Cargo' }, { key: 'pais', label: 'País' }, { key: 'fonte', label: 'Fonte' }],
+    facets: [{ key: 'tipo', label: 'Tipo de vaga' }, { key: 'dor', label: 'Insatisfação' }, { key: 'crm', label: 'CRM' }, { key: 'cargo', label: 'Cargo' }, { key: 'pais', label: 'País' }, { key: 'fonte', label: 'Fonte' }],
   },
   {
     id: 'lideranca', label: 'Liderança', title: 'Mudança de liderança', collector: 'noticias',
@@ -36,12 +36,6 @@ export const MODALITIES: ModalityInfo[] = [
     description: 'Fusão exige integrar dois CRMs; investimento e expansão trazem orçamento e novos usuários.',
     empty: 'Nenhum gatilho encontrado ainda. Rode a atualização de notícias.',
     facets: [{ key: 'tipo', label: 'Tipo' }, { key: 'fonte', label: 'Fonte' }],
-  },
-  {
-    id: 'dor', label: 'Dor', title: 'Indício de insatisfação com o sistema atual', collector: 'vagas',
-    description: 'A descrição da vaga fala em migrar de CRM, sistema legado, org existente com problemas ou processo manual. É indício, não certeza: leia a evidência.',
-    empty: 'Nenhum indício de dor nas vagas coletadas. Os sinais explícitos são raros; veja também Liderança e Outros gatilhos.',
-    facets: [{ key: 'dor', label: 'Tipo de dor' }, { key: 'fonte', label: 'Fonte' }],
   },
   {
     id: 'concorrente', label: 'CRM concorrente', title: 'Empresas que usam CRM concorrente', collector: 'vagas',
@@ -141,6 +135,7 @@ function toRow(id: ModalityId, r: RawRow): ModalityRow {
 
 const SOURCE_LABEL: Record<string, string> = {
   gupy: 'Gupy', getonbrd: 'Get on Board', greenhouse: 'Greenhouse', lever: 'Lever', smartrecruiters: 'SmartRecruiters',
+  workable: 'Workable', ashby: 'Ashby', workday: 'Workday', receita: 'Receita (diretoria)', 'linkedin-alerta': 'Alerta LinkedIn (e-mail)',
   gdelt: 'Notícias', dns: 'DNS', site: 'Site', 'salesforce-casos': 'Casos Salesforce', manual: 'Manual',
 };
 const CARGO_LABEL: Record<string, string> = {
@@ -158,7 +153,8 @@ function facetsOf(id: ModalityId, r: RawRow, meta: Record<string, unknown>): Rec
     case 'vagas': {
       // Vaga antiga sem o campo "salesforce" era sempre de Salesforce.
       const tipo = [...(meta.salesforce !== false ? ['Vaga Salesforce'] : []), ...(crms.length ? ['Vaga de CRM concorrente'] : [])];
-      return { tipo, crm: crms, cargo: [CARGO_LABEL[r.subtype ?? ''] ?? 'Outro'], pais: [countryName((meta.country as string) ?? 'BR')], fonte };
+      const dor = ((meta.pain as unknown[] | undefined) ?? []).length ? ['Com indício de dor'] : [];
+      return { tipo, dor, crm: crms, cargo: [CARGO_LABEL[r.subtype ?? ''] ?? 'Outro'], pais: [countryName((meta.country as string) ?? 'BR')], fonte };
     }
     case 'lideranca': return { area: [meta.area === 'tecnologia' ? 'Tecnologia' : meta.area === 'comercial' ? 'Comercial' : 'Outra'] };
     case 'gatilhos': return { tipo: [KIND_LABEL[r.subtype ?? ''] ?? 'Outro'], fonte };
@@ -189,4 +185,9 @@ export function modalityCounts(db: DB): Record<ModalityId, { total: number; comp
 export function lastRunOf(db: DB, collector: string): { finished_at: string | null; error: string | null } | null {
   return (db.prepare('SELECT finished_at, error FROM collection_runs WHERE collector = ? ORDER BY id DESC LIMIT 1')
     .get(collector) as { finished_at: string | null; error: string | null } | undefined) ?? null;
+}
+
+// Leads por aba (para esconder abas vazias).
+export function tabCounts(db: DB): Record<string, number> {
+  return Object.fromEntries(Object.entries(modalityCounts(db)).map(([k, v]) => [k, v.companies]));
 }

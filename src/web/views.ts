@@ -9,12 +9,14 @@ import { VISAO_LABEL, visoesOf, type Visao } from './queries.ts';
 // Abas da seção Leads: a lista completa e as modalidades (ver modalities.ts).
 const LEAD_TABS: [string, string, string][] = [
   ['todos', 'Todos', '/'], ['vagas', 'Vagas', '/radar/vagas'], ['lideranca', 'Liderança', '/radar/lideranca'],
-  ['gatilhos', 'Outros gatilhos', '/radar/gatilhos'], ['dor', 'Dor', '/radar/dor'],
+  ['gatilhos', 'Outros gatilhos', '/radar/gatilhos'],
   ['concorrente', 'CRM concorrente', '/radar/concorrente'], ['tecnologia', 'Tecnologia', '/radar/tecnologia'],
 ];
 
-export function leadTabs(active: string): string {
-  return `<nav class="lead-tabs" aria-label="Seções de leads">${LEAD_TABS.map(([id, label, href]) =>
+// `counts`: quantos leads há em cada aba; aba vazia não aparece (a não ser a que está aberta).
+export function leadTabs(active: string, counts?: Record<string, number>): string {
+  const tabs = LEAD_TABS.filter(([id]) => id === 'todos' || id === active || !counts || (counts[id] ?? 0) > 0);
+  return `<nav class="lead-tabs" aria-label="Seções de leads">${tabs.map(([id, label, href]) =>
     `<a class="btn${id === active ? '' : ' secondary'}" href="${href}"${id === active ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
 }
 
@@ -118,6 +120,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .tabs a { padding: 5px 12px; border-radius: 999px; background: var(--chip); color: var(--text); font-size: 13px; }
 .tabs a.on { background: var(--accent); color: #fff; } .tabs a .c { opacity: .75; margin-left: 4px; }
 .delta-up { color: var(--good); font-size: 12px; font-weight: 700; } .delta-down { color: var(--bad); font-size: 12px; font-weight: 700; }
+.chip.out-reuniao, .chip.out-respondeu { background: var(--good); color: #fff; } .chip.out-contatado { background: var(--accent-weak); color: var(--accent); }
 .chip.new { background: var(--accent-weak); color: var(--accent); }
 .chip.st-qualificado, .chip.st-em_abordagem { background: transparent; border: 1px solid var(--good); color: var(--good); }
 .chip.st-descartado { background: transparent; border: 1px solid var(--muted); color: var(--muted); }
@@ -134,7 +137,7 @@ kbd { border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 
 </head>
 <body>
 <header><h1><a href="/dashboard">Radar de Oportunidades Salesforce</a></h1>
-  <nav><a href="/dashboard">Dashboard</a>${isStatic ? '' : '<a href="/triagem">Triagem</a>'}<a href="/">Leads</a>${isStatic ? '' : '<a href="/atualizar">Atualizar</a>'}</nav>
+  <nav><a href="/hoje">Hoje</a><a href="/dashboard">Dashboard</a>${isStatic ? '' : '<a href="/triagem">Triagem</a>'}<a href="/">Leads</a>${isStatic ? '' : '<a href="/atualizar">Atualizar</a>'}</nav>
   <span class="sub">Sottelli · uso interno · nada é enviado automaticamente</span></header>
 <main>${body}</main>
 ${isStatic ? '' : DECISION_UI}
@@ -151,7 +154,7 @@ function option(value: string, label: string, current?: string) {
 // `isStatic` = versão publicada (Vercel): filtros rodam no navegador e não há edição.
 export function listPage(
   rows: CompanyRow[], f: Filters, runs: { collector: string; finished_at: string | null; stats: string | null }[],
-  isStatic = false, counts?: Record<Visao, number>,
+  isStatic = false, counts?: Record<Visao, number>, tabs?: Record<string, number>,
 ): string {
   const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as [string, string][]).toString();
   const lastRun = runs[0];
@@ -204,7 +207,7 @@ export function listPage(
   <td>${(r.signal_types ?? '').split(',').filter(Boolean).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}<span class="small muted">${r.job_count} vaga(s)</span></td>
   <td class="small">${fmtDate(r.last_signal_at)}</td>
   <td class="small">${statusChip(r)}</td>
-  ${isStatic ? '' : `<td><div class="actions">${decisionButtons(r.id, r.status, true)}</div></td>`}
+  ${isStatic ? '' : `<td><div class="actions">${decisionButtons(r.id, r.status, true, r.outreach)}</div></td>`}
 </tr>`;
       }).join('')
     : `<tr><td colspan="${isStatic ? 8 : 9}" class="muted">${visao === 'triagem' ? 'Nada para triar agora.' : 'Nenhum lead com esses filtros.'} Use “Atualizar” para buscar novos sinais.</td></tr>`;
@@ -221,7 +224,7 @@ export function listPage(
   <div class="actions"><button type="submit">Adicionar</button><button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancelar</button></div>
 </form></dialog>`;
   return layout('Leads · Radar', `
-${leadTabs('todos')}
+${leadTabs('todos', tabs)}
 ${addLead}
 ${situacao}
 ${filters}
@@ -260,11 +263,12 @@ export function detailPage(d: {
   breakdown: BreakdownItem[];
   offers: OfferSuggestion[];
   events?: { kind: string; detail: string | null; created_at: string }[];
+  contacts?: { id: number; name: string; role: string | null; since: string | null; channel: string | null; origin: string }[];
 }, isStatic = false): string {
   const c = d.company;
   const EVENT_LABEL: Record<string, string> = {
     aprovada: 'Aprovada', descartada: 'Descartada', adiada: 'Adiada', reaberta: 'Reaberta', etapa: 'Etapa do funil',
-    cadastrada: 'Cadastrada à mão', juncao: 'Duplicado juntado',
+    cadastrada: 'Cadastrada à mão', juncao: 'Duplicado juntado', contato: 'Abordagem',
   };
   const timeline = (d.events ?? []).map((e) => `<div class="ev"><strong>${esc(EVENT_LABEL[e.kind] ?? e.kind)}</strong>
     ${e.detail ? ` · ${esc(e.detail)}` : ''}<div class="small muted">${fmtDate(e.created_at)}</div></div>`).join('')
@@ -306,7 +310,7 @@ export function detailPage(d: {
           ${c.excluded_reason ? `<span class="chip flag">excluída: ${esc(c.excluded_reason)}</span>` : ''}
           <div style="margin-top:6px">${statusChip(c)}</div></div>
       </div>
-      ${isStatic ? '' : `<div class="decision">${decisionButtons(c.id, c.status)}</div>`}
+      ${isStatic ? '' : `<div class="decision">${decisionButtons(c.id, c.status, false, c.outreach)}</div>`}
     </div>
     <div class="card"><h2>Por que essa nota</h2>${bd || '<p class="muted">Ainda não pontuada.</p>'}</div>
     <div class="card"><h2>Evidências (${d.signals.length})</h2>${signals}</div>
@@ -317,14 +321,21 @@ export function detailPage(d: {
       <p class="small muted">Geração via Claude API entra na etapa 9. O rascunho nunca é enviado automaticamente.</p></div>
     ${isStatic ? readOnlyFollowUp(c) : `<form class="card stack" method="post" action="/empresa/${c.id}">
       <h2>Acompanhamento</h2>
-      <label class="small muted">Status<br><select name="status">${STATUSES.map((s) => option(s, STATUS_LABEL[s], c.status)).join('')}</select></label>
-      <label class="small muted">Etapa do funil<br><select name="stage">${STAGES.map((s) => option(s, STAGE_LABEL[s], c.stage)).join('')}</select></label>
       <label class="small muted">Próxima ação<br><input name="next_action" value="${esc(c.next_action)}" style="width:100%"></label>
       <label class="small muted">Data da próxima ação<br><input type="date" name="next_action_at" value="${esc(c.next_action_at)}"></label>
       <label class="small muted">Excluir do radar<br><select name="excluded_reason">${option('', 'Não excluir', c.excluded_reason ?? '')}${option('cliente', 'Já é cliente', c.excluded_reason ?? '')}${option('concorrente', 'Concorrente/consultoria', c.excluded_reason ?? '')}${option('recrutadora', 'Recrutadora', c.excluded_reason ?? '')}</select></label>
       <label class="small muted">Anotações<br><textarea name="notes" rows="4" style="width:100%">${esc(c.notes)}</textarea></label>
       <button type="submit">Salvar</button>
     </form>`}
+    <div class="card"><h2>Contatos</h2>
+      ${(d.contacts ?? []).map((p) => `<div class="ev small"><strong>${esc(p.name)}</strong>${p.role ? ` — ${esc(p.role)}` : ''}${p.since ? ` <span class="muted">(desde ${esc(p.since.split('-').reverse().join('/'))})</span>` : ''}
+        ${p.channel ? `<div>${/^https?:/.test(p.channel) ? extLink(p.channel, esc(p.channel)) : esc(p.channel)}</div>` : ''}<div class="muted">${esc(p.origin === 'manual' ? 'cadastrado à mão' : p.origin)}</div></div>`).join('') || '<p class="small muted">Nenhum contato ainda.</p>'}
+      ${isStatic ? '' : `<form method="post" action="/empresa/${c.id}/contato" class="stack" style="margin-top:10px">
+        <input name="name" placeholder="Nome" required style="width:100%">
+        <input name="role" placeholder="Cargo" style="width:100%">
+        <input name="channel" placeholder="E-mail, telefone ou link do perfil" style="width:100%">
+        <button type="submit" class="btn secondary sm">Adicionar contato</button></form>`}
+      <p class="small muted" style="margin:8px 0 0">Dados de contato para abordagem B2B (legítimo interesse). Se a pessoa pedir, remova.</p></div>
     <div class="card timeline"><h2>Histórico</h2>${timeline}</div>
     <div class="card small"><h2>Nomes encontrados</h2>${d.aliases.map((a) => `<div>${esc(a.alias)} <span class="muted">(${esc(a.source)})</span></div>`).join('')}</div>
   </div>
@@ -352,7 +363,8 @@ const DECISION_UI = `
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 window.radar = (function () {
-  var MSG = { aprovar: 'Lead aprovado', descartar: 'Lead descartado', adiar: 'Lead adiado', reabrir: 'Lead reaberto' };
+  var MSG = { aprovar: 'Lead aprovado', descartar: 'Lead descartado', adiar: 'Lead adiado', reabrir: 'Lead reaberto',
+    contatei: 'Contato registrado', respondeu: 'Resposta registrada', reuniao: 'Reunião registrada', sem_resposta: 'Registrado: sem resposta' };
   function toast(msg) {
     var t = document.getElementById('toast');
     t.textContent = msg; t.classList.add('show');
@@ -396,22 +408,33 @@ window.radar = (function () {
 </script>`;
 
 // Botões de decisão conforme a situação atual da conta.
-export function decisionButtons(id: number, status: string, small = false): string {
+// Próximo passo conforme a situação: triar (aprovar/descartar/adiar) e, depois de aprovado,
+// registrar a abordagem: Contatei → Respondeu ou Sem resposta → Reunião marcada.
+export function decisionButtons(id: number, status: string, small = false, outreach: string | null = null): string {
   const sm = small ? ' sm' : '';
   const b = (action: string, label: string, cls: string, title: string) =>
     `<button type="button" class="${cls}${sm}" data-decide="${action}" data-id="${id}" title="${title}">${label}</button>`;
   if (status === 'descartado') return b('reabrir', 'Reabrir', 'btn secondary', 'Volta para a triagem');
-  return [
-    status === 'qualificado' || status === 'em_abordagem' ? '' : b('aprovar', 'Aprovar', 'ok', 'Vale abordar'),
-    b('descartar', 'Descartar', 'bad', 'Não vale abordar (pede o motivo)'),
-    b('adiar', 'Adiar', 'btn secondary', 'Esconde até uma data'),
-  ].join('');
+  const approved = status === 'qualificado' || status === 'em_abordagem';
+  const next = !approved
+    ? [b('aprovar', 'Aprovar', 'ok', 'Vale abordar')]
+    : outreach === 'contatado'
+      ? [b('respondeu', 'Respondeu', 'ok', 'O contato respondeu'), b('sem_resposta', 'Sem resposta', 'btn secondary', 'Não respondeu')]
+      : outreach === 'respondeu'
+        ? [b('reuniao', 'Reunião marcada', 'ok', 'Reunião agendada'), b('sem_resposta', 'Esfriou', 'btn secondary', 'Parou de responder')]
+        : outreach === 'reuniao'
+          ? []
+          : [b('contatei', outreach === 'sem_resposta' ? 'Contatei de novo' : 'Contatei', 'ok', 'Registrar que a abordagem foi feita')];
+  return [...next, b('descartar', 'Descartar', 'bad', 'Não vale abordar (pede o motivo)'), approved && outreach ? '' : b('adiar', 'Adiar', 'btn secondary', 'Esconde até uma data')].join('');
 }
 
-export function statusChip(r: { status: string; discard_reason: string | null; snoozed_until: string | null }): string {
+const OUTREACH_LABEL: Record<string, string> = { contatado: 'Contatado', respondeu: 'Respondeu', reuniao: 'Reunião marcada', sem_resposta: 'Sem resposta' };
+
+export function statusChip(r: { status: string; discard_reason: string | null; snoozed_until: string | null; outreach?: string | null }): string {
   const today = new Date().toISOString().slice(0, 10);
   const snoozed = r.snoozed_until && r.snoozed_until > today && r.status !== 'descartado';
   return `<span class="chip st-${esc(r.status)}">${esc(STATUS_LABEL[r.status] ?? r.status)}</span>`
+    + (r.outreach ? `<span class="chip out-${esc(r.outreach)}">${esc(OUTREACH_LABEL[r.outreach] ?? r.outreach)}</span>` : '')
     + (r.status === 'descartado' && r.discard_reason ? `<div class="small muted">${esc(DISCARD_LABEL[r.discard_reason] ?? r.discard_reason)}</div>` : '')
     + (snoozed ? `<div class="small muted">adiada até ${esc(r.snoozed_until!.split('-').reverse().join('/'))}</div>` : '');
 }

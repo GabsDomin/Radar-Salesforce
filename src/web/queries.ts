@@ -38,6 +38,8 @@ export interface CompanyRow {
   snoozed_until: string | null;
   prev_total: number | null;
   new_signals: number;  // sinais coletados nos últimos 7 dias
+  outreach: string | null;
+  outreach_at: string | null;
 }
 
 export function listCompanies(db: DB, f: Filters): CompanyRow[] {
@@ -58,7 +60,7 @@ export function listCompanies(db: DB, f: Filters): CompanyRow[] {
 
   return db.prepare(`
     SELECT c.id, c.name, c.sector, c.sector_source, c.size_band, c.city, c.state, c.status, c.stage, c.excluded_reason,
-           c.discard_reason, c.snoozed_until, s.prev_total,
+           c.discard_reason, c.snoozed_until, c.outreach, c.outreach_at, s.prev_total,
            (SELECT count(*) FROM signals x WHERE x.company_id = c.id AND x.collected_at >= datetime('now', '-7 days')) AS new_signals,
            s.total, s.fit, s.signal, s.offers, s.breakdown, s.computed_at,
            (SELECT group_concat(DISTINCT type) FROM signals x WHERE x.company_id = c.id) AS signal_types,
@@ -134,6 +136,8 @@ export function getCompany(db: DB, id: number) {
     'SELECT * FROM signals WHERE company_id = ? ORDER BY COALESCE(published_at, collected_at) DESC',
   ).all(id) as unknown as SignalRow[];
   const aliases = (db.prepare('SELECT alias, source FROM company_aliases WHERE company_id = ?').all(id) as { alias: string; source: string }[]);
+  const contacts = db.prepare("SELECT id, name, role, since, channel, origin FROM contacts WHERE company_id = ? AND opt_out = 0 ORDER BY (origin = 'manual') DESC, since DESC")
+    .all(id) as { id: number; name: string; role: string | null; since: string | null; channel: string | null; origin: string }[];
   const events = db.prepare('SELECT kind, detail, created_at FROM account_events WHERE company_id = ? ORDER BY id DESC LIMIT 50')
     .all(id) as { kind: string; detail: string | null; created_at: string }[];
   return {
@@ -141,6 +145,7 @@ export function getCompany(db: DB, id: number) {
     signals,
     aliases,
     events,
+    contacts,
     breakdown: (company.breakdown ? JSON.parse(company.breakdown) : []) as BreakdownItem[],
     offers: (company.offers ? JSON.parse(company.offers) : []) as OfferSuggestion[],
   };

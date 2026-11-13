@@ -10,6 +10,8 @@ export interface DashboardData {
   queue: Record<Visao, number>;
   nextActions: { id: number; name: string; next_action: string | null; next_action_at: string; due: number }[];
   discardReasons: { label: string; count: number }[];
+  // Resultado por fonte de origem do lead: mostra, com o tempo, qual fonte traz reunião (e cliente).
+  bySourceOutcome: { source: string; leads: number; aprovados: number; contatados: number; responderam: number; reunioes: number }[];
   modalities: Record<ModalityId, { total: number; companies: number; recent: number }>;
   totals: { accounts: number; withPain: number; hot: number; newLast7: number; withTrigger: number; jobsActive: number; excluded: number };
   scoreBuckets: { label: string; count: number }[];
@@ -101,7 +103,18 @@ export function dashboardData(db: DB, hotThreshold = 50): DashboardData {
     `SELECT c.discard_reason, count(*) n FROM companies c WHERE c.status = 'descartado' GROUP BY c.discard_reason ORDER BY n DESC`)
     .map((r) => ({ label: DISCARD_LABEL[r.discard_reason ?? ''] ?? 'Sem motivo', count: r.n }));
 
-  return { generatedAt: new Date().toISOString(), queue: visaoCounts(db), nextActions, discardReasons, modalities: modalityCounts(db), totals, scoreBuckets, bySector, byOffer, funnel, bySource, topAccounts, recentTriggers, runs };
+  const bySourceOutcome = all<{ source: string; leads: number; aprovados: number; contatados: number; responderam: number; reunioes: number }>(db, `
+    SELECT o.source, count(*) AS leads,
+      sum(CASE WHEN c.status IN ('qualificado', 'em_abordagem') THEN 1 ELSE 0 END) AS aprovados,
+      sum(CASE WHEN c.outreach IS NOT NULL THEN 1 ELSE 0 END) AS contatados,
+      sum(CASE WHEN c.outreach IN ('respondeu', 'reuniao') THEN 1 ELSE 0 END) AS responderam,
+      sum(CASE WHEN c.outreach = 'reuniao' THEN 1 ELSE 0 END) AS reunioes
+    FROM companies c
+    JOIN (SELECT company_id, source FROM signals x WHERE x.id = (SELECT min(id) FROM signals y WHERE y.company_id = x.company_id)) o ON o.company_id = c.id
+    WHERE ${visible}
+    GROUP BY o.source ORDER BY reunioes DESC, responderam DESC, aprovados DESC, leads DESC`);
+
+  return { generatedAt: new Date().toISOString(), queue: visaoCounts(db), nextActions, discardReasons, bySourceOutcome, modalities: modalityCounts(db), totals, scoreBuckets, bySector, byOffer, funnel, bySource, topAccounts, recentTriggers, runs };
 }
 
 function summarizeStats(stats: string | null): string {

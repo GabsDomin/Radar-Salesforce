@@ -42,7 +42,8 @@ export class PoliteClient {
   }
 
   // `encoding`: para fontes que não usam UTF-8 (ex.: a CVM publica em latin1).
-  async get(url: string, source: string, opts: { encoding?: string } = {}): Promise<PoliteResponse> {
+  // `json`: envia um POST com corpo JSON (APIs de busca, como a do Workday); as mesmas regras valem.
+  async get(url: string, source: string, opts: { encoding?: string; json?: unknown } = {}): Promise<PoliteResponse> {
     const u = new URL(url);
     const robots = await this.robotsFor(u.origin);
     if (!robots.isAllowed(u.pathname + u.search)) {
@@ -52,10 +53,17 @@ export class PoliteClient {
     let attempt = 0;
     for (;;) {
       await this.throttle(u.host, robots.crawlDelaySec);
-      const res = await this.fetchFn(url, {
-        headers: { 'User-Agent': httpConfig.userAgent, Accept: 'text/html,application/json' },
-        signal: AbortSignal.timeout(httpConfig.timeoutMs),
-      });
+      const res = await this.fetchFn(url, opts.json === undefined
+        ? {
+          headers: { 'User-Agent': httpConfig.userAgent, Accept: 'text/html,application/json' },
+          signal: AbortSignal.timeout(httpConfig.timeoutMs),
+        }
+        : {
+          method: 'POST',
+          headers: { 'User-Agent': httpConfig.userAgent, Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify(opts.json),
+          signal: AbortSignal.timeout(httpConfig.timeoutMs),
+        });
       const text = opts.encoding ? new TextDecoder(opts.encoding).decode(await res.arrayBuffer()) : await res.text();
       if ((res.status === 429 || res.status >= 500) && attempt < httpConfig.maxRetries) {
         attempt++;

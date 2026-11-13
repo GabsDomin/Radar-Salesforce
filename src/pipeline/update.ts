@@ -8,6 +8,8 @@ import { collectGupy } from '../sources/gupy.ts';
 import { collectBoards, parseBoards } from '../sources/boards.ts';
 import { collectGetonbrd } from '../sources/getonbrd.ts';
 import { runTech, runCases } from './tech.ts';
+import { runEnrich } from './enrich.ts';
+import { discoverFromSites, readBoards } from './boardsDiscovery.ts';
 import { mergeDuplicates } from './companies.ts';
 import { collectNews } from '../sources/news.ts';
 import { parseCsv } from '../util/csv.ts';
@@ -19,11 +21,12 @@ import { jobSearchTerms, competitorSearchTerms, ROOT, gdeltIntervalMs } from '..
 const ALL_TERMS = [...jobSearchTerms, ...competitorSearchTerms];
 
 export type Log = (msg: string) => void;
-export type StepId = 'vagas' | 'noticias' | 'tecnologia' | 'site' | 'publicar';
+export type StepId = 'vagas' | 'noticias' | 'enriquecer' | 'tecnologia' | 'site' | 'publicar';
 
 export const STEP_LABEL: Record<StepId, string> = {
   vagas: 'Coletar vagas (Gupy, Get on Board e quadros)',
   noticias: 'Buscar notícias e gatilhos',
+  enriquecer: 'Enriquecer (site, CNPJ, Receita: setor, porte e diretoria)',
   tecnologia: 'Detectar tecnologia (CVM, site/DNS e casos de clientes Salesforce)',
   site: 'Gerar painel estático',
   publicar: 'Publicar na Vercel',
@@ -59,6 +62,17 @@ export function runVagas(db: DB, log: Log) {
       postings.push(...(await collectBoards(client, boards, log)));
     }
     const stats = ingestJobs(db, postings);
+    log(`${scoreAll(db)} conta(s) pontuada(s).`);
+    return stats;
+  });
+}
+
+export function runEnriquecer(db: DB, log: Log) {
+  return tracked(db, 'enriquecer', async () => {
+    const client = new PoliteClient({ db });
+    const stats = { ...(await runEnrich(db, client, log)), boardsFromSites: await discoverFromSites(db, client, log) };
+    const { merged } = mergeDuplicates(db);
+    if (merged.length) log(`Duplicados juntados: ${merged.join('; ')}`);
     log(`${scoreAll(db)} conta(s) pontuada(s).`);
     return stats;
   });
@@ -117,7 +131,7 @@ export interface UpdateOptions {
 // Executa as etapas na ordem; uma etapa que falha é registrada e as demais continuam
 // (exceto publicar, que só roda se o site foi gerado).
 export async function atualizar(db: DB, opts: UpdateOptions, log: Log): Promise<{ step: StepId; ok: boolean; error?: string }[]> {
-  const order: StepId[] = ['vagas', 'noticias', 'tecnologia', 'site', 'publicar'];
+  const order: StepId[] = ['vagas', 'noticias', 'enriquecer', 'tecnologia', 'site', 'publicar'];
   const results: { step: StepId; ok: boolean; error?: string }[] = [];
   for (const step of order.filter((s) => opts.steps.includes(s))) {
     opts.onStep?.(step);
@@ -130,6 +144,7 @@ export async function atualizar(db: DB, opts: UpdateOptions, log: Log): Promise<
     try {
       if (step === 'vagas') await runVagas(db, log);
       else if (step === 'noticias') await runNoticias(db, opts.newsLimit ?? 30, log);
+      else if (step === 'enriquecer') await runEnriquecer(db, log);
       else if (step === 'tecnologia') await runTecnologia(db, log);
       else if (step === 'site') runSite(db, log);
       else await runPublicar(log);

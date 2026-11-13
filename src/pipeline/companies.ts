@@ -44,11 +44,12 @@ export function exclusionFor(db: DB, name: string): string | null {
 // mesmo domínio; mesmas palavras em outra ordem ("Vipal Borrachas" = "Borrachas Vipal");
 // uma é a outra + "Brasil"/"do Brasil"/"Latam" ("Banco ABC" = "Banco ABC Brasil"); ou o nome compacto
 // de uma é o domínio da outra ("BTG Pactual" = btgpactual.com).
-interface DupRow { id: number; name: string; domain: string | null; status: string; notes: string | null; signals: number }
+interface DupRow { id: number; name: string; domain: string | null; cnpj?: string | null; status: string; notes: string | null; signals: number }
 
 const SUFFIXES = [' brasil', ' do brasil', ' latam'];
 
 export function sameCompany(a: DupRow, b: DupRow): boolean {
+  if (a.cnpj && b.cnpj && a.cnpj === b.cnpj) return true;
   if (a.domain && b.domain && a.domain === b.domain) return true;
   const na = normalizeCompanyName(a.name);
   const nb = normalizeCompanyName(b.name);
@@ -68,7 +69,7 @@ function keeperOf(a: DupRow, b: DupRow): [DupRow, DupRow] {
 }
 
 export function mergeDuplicates(db: DB): { merged: string[] } {
-  const rows = db.prepare(`SELECT c.id, c.name, c.domain, c.status, c.notes,
+  const rows = db.prepare(`SELECT c.id, c.name, c.domain, c.cnpj, c.status, c.notes,
       (SELECT count(*) FROM signals x WHERE x.company_id = c.id) AS signals FROM companies c ORDER BY c.id`).all() as unknown as DupRow[];
   const merged: string[] = [];
   const gone = new Set<number>();

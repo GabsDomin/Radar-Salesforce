@@ -20,6 +20,12 @@ const ADDED_COLUMNS: [string, string, string][] = [
   ['companies', 'decided_at', 'TEXT'],
   ['companies', 'snoozed_until', 'TEXT'],
   ['scores', 'prev_total', 'INTEGER'],
+  ['companies', 'outreach', 'TEXT'],
+  ['companies', 'outreach_at', 'TEXT'],
+  ['contacts', 'since', 'TEXT'],
+  ['companies', 'receita_at', 'TEXT'],
+  ['contacts', 'channel', 'TEXT'],
+  ['companies', 'ats_at', 'TEXT'],
 ];
 
 function migrate(db: DB) {

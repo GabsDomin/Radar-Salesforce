@@ -7,8 +7,9 @@ import { listCompanies, getCompany, lastRuns } from './queries.ts';
 import { listPage, detailPage } from './views.ts';
 import { dashboardData } from './dashboard.ts';
 import { dashboardPage, modalityPage } from './pages.ts';
-import { MODALITIES, modalityRows, lastRunOf } from './modalities.ts';
+import { MODALITIES, modalityRows, lastRunOf, tabCounts } from './modalities.ts';
 import { FAVICON_SVG } from './favicon.ts';
+import { todayData, todayPage, coSellCsv } from './today.ts';
 import { exportCsv } from './export.ts';
 
 export function buildStaticSite(db: DB, outDir: string): { companies: number } {
@@ -17,16 +18,18 @@ export function buildStaticSite(db: DB, outDir: string): { companies: number } {
 
   // Inclui as excluídas: o filtro "Excluídas" do navegador decide se aparecem.
   const rows = listCompanies(db, { excluidas: '1', visao: 'tudo' });
-  fs.writeFileSync(path.join(outDir, 'index.html'), listPage(rows, {}, lastRuns(db), true));
+  fs.writeFileSync(path.join(outDir, 'index.html'), listPage(rows, {}, lastRuns(db), true, undefined, tabCounts(db)));
   for (const r of rows) {
     const d = getCompany(db, r.id);
     if (d) fs.writeFileSync(path.join(outDir, 'empresa', `${r.id}.html`), detailPage(d, true));
   }
   fs.writeFileSync(path.join(outDir, 'dashboard.html'), dashboardPage(dashboardData(db), true));
   fs.writeFileSync(path.join(outDir, 'favicon.svg'), FAVICON_SVG);
+  fs.writeFileSync(path.join(outDir, 'hoje.html'), todayPage(todayData(db), true));
+  fs.writeFileSync(path.join(outDir, 'co-venda.csv'), coSellCsv(db));
   fs.mkdirSync(path.join(outDir, 'radar'), { recursive: true });
   for (const m of MODALITIES) {
-    fs.writeFileSync(path.join(outDir, 'radar', `${m.id}.html`), modalityPage(m, modalityRows(db, m.id), lastRunOf(db, m.collector), true));
+    fs.writeFileSync(path.join(outDir, 'radar', `${m.id}.html`), modalityPage(m, modalityRows(db, m.id), lastRunOf(db, m.collector), true, tabCounts(db)));
   }
   fs.writeFileSync(path.join(outDir, 'radar.csv'), exportCsv(db, { excluidas: '1', visao: 'tudo' }));
   return { companies: rows.length };

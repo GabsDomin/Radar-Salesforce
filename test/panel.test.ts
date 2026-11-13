@@ -101,13 +101,16 @@ test('modalidades: cada tela mostra só o seu tipo de sinal', async () => {
   assert.equal(modalityRows(db, 'lideranca').length, 1);
   assert.equal(modalityRows(db, 'gatilhos').length, 1);
   assert.equal(modalityRows(db, 'dor').length, 1);                       // só a vaga com migração de CRM
+  // Dor não é mais aba: é o filtro "Insatisfação" dentro de Vagas.
+  assert.deepEqual(modalityRows(db, 'vagas').map((r) => r.facets.dor), [['Com indício de dor'], []]);
+  assert.ok(!MODALITIES.some((m) => m.id === 'dor'));
   assert.equal(modalityRows(db, 'lideranca')[0].title, 'Alfa Alimentos nomeia novo diretor de TI'); // sem o prefixo interno
   assert.deepEqual(modalityRows(db, 'lideranca')[0].tags, ['área: tecnologia']);
   assert.equal(modalityRows(db, 'vagas', { q: 'beta' }).length, 1);
   assert.equal(modalityRows(db, 'vagas', { min: '99' }).length, 0);
   assert.equal(modalityRows(db, 'vagas')[0].company, 'Alfa Alimentos S.A.'); // maior nota primeiro (tem dor)
   const counts = modalityCounts(db);
-  assert.deepEqual([counts.vagas.total, counts.lideranca.total, counts.gatilhos.total, counts.dor.total], [2, 1, 1, 1]);
+  assert.deepEqual([counts.vagas.total, counts.lideranca.total, counts.gatilhos.total], [2, 1, 1]);
   assert.equal(dashboardData(db).modalities.lideranca.companies, 1);
 
   const info = MODALITIES.find((m) => m.id === 'lideranca')!;
@@ -135,7 +138,7 @@ test('site estático inclui uma página por modalidade, sem o botão de atualiza
   const { buildStaticSite } = await import('../src/web/static.ts');
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'radar-mod-')), 'public');
   buildStaticSite(seed(), out);
-  for (const id of ['vagas', 'lideranca', 'gatilhos', 'dor']) {
+  for (const id of ['vagas', 'lideranca', 'gatilhos', 'concorrente', 'tecnologia']) {
     const html = fs.readFileSync(path.join(out, 'radar', `${id}.html`), 'utf8');
     assert.doesNotMatch(html, /href="\/atualizar"/);
   }
@@ -164,4 +167,15 @@ test('favicon: linkado em todas as páginas, servido no painel local e incluído
   } finally {
     server.close();
   }
+});
+
+test('abas vazias somem; a aba aberta e "Todos" ficam sempre', async () => {
+  const { leadTabs } = await import('../src/web/views.ts');
+  const html = leadTabs('vagas', { vagas: 3, lideranca: 0, gatilhos: 0, concorrente: 2, tecnologia: 0 });
+  assert.match(html, />Todos</);
+  assert.match(html, />Vagas</);
+  assert.match(html, />CRM concorrente</);
+  assert.doesNotMatch(html, />Liderança</);
+  assert.doesNotMatch(html, />Tecnologia</);
+  assert.match(leadTabs('lideranca', { lideranca: 0 }), />Liderança</); // aberta, mesmo vazia
 });

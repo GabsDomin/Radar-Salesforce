@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS companies (
   discard_reason   TEXT,              -- motivo ao descartar (ver decisions.ts)
   decided_at       TEXT,              -- última decisão (aprovar/descartar)
   snoozed_until    TEXT,              -- AAAA-MM-DD: conta adiada até essa data
+  outreach         TEXT,              -- contatado | respondeu | reuniao | sem_resposta (resultado da abordagem)
+  outreach_at      TEXT,
+  receita_at       TEXT,              -- última consulta à Receita (Minha Receita)
+  ats_at           TEXT,              -- última busca do sistema de vagas no site da empresa
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -103,6 +107,8 @@ CREATE TABLE IF NOT EXISTS contacts (
   company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   role        TEXT,
+  since       TEXT,                   -- data de entrada no cargo (ex.: diretoria na Receita)
+  channel     TEXT,                   -- e-mail, telefone ou link de perfil (cadastrado à mão)
   email       TEXT,
   origin      TEXT NOT NULL,
   legal_basis TEXT NOT NULL DEFAULT 'legitimo_interesse_b2b',

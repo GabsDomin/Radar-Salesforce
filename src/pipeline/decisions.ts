@@ -5,7 +5,16 @@ import { tx } from '../db/index.ts';
 import { normalizeCompanyName } from '../normalize/company.ts';
 import { exclusionFor } from './companies.ts';
 
-export type DecisionAction = 'aprovar' | 'descartar' | 'adiar' | 'reabrir';
+export type DecisionAction = 'aprovar' | 'descartar' | 'adiar' | 'reabrir' | OutreachStep;
+
+// Resultado da abordagem: o que mostra, com o tempo, quais fontes e ofertas trazem cliente.
+export type OutreachStep = 'contatei' | 'respondeu' | 'reuniao' | 'sem_resposta';
+export const OUTREACH: Record<OutreachStep, { state: string; label: string; event: string }> = {
+  contatei: { state: 'contatado', label: 'Contatado', event: 'Contato feito' },
+  respondeu: { state: 'respondeu', label: 'Respondeu', event: 'Respondeu' },
+  reuniao: { state: 'reuniao', label: 'Reunião marcada', event: 'Reunião marcada' },
+  sem_resposta: { state: 'sem_resposta', label: 'Sem resposta', event: 'Sem resposta' },
+};
 
 // `exclui` = o motivo tira a empresa do radar de vez (já é cliente / é concorrente).
 export const DISCARD_REASONS: { id: string; label: string; exclui?: 'cliente' | 'concorrente' }[] = [
@@ -84,6 +93,19 @@ export function decide(db: DB, companyId: number, d: Decision, now = new Date())
         db.prepare('UPDATE companies SET excluded_reason = ? WHERE id = ?').run(exclusionFor(db, company.name), companyId);
         addEvent(db, companyId, 'reaberta', note);
         return { ok: true, status: 'novo', stage: 'radar', snoozedUntil: null };
+      }
+      case 'contatei':
+      case 'respondeu':
+      case 'reuniao':
+      case 'sem_resposta': {
+        // Abordar implica aprovar: a conta passa a "em abordagem" (aparece em Aprovadas).
+        const o = OUTREACH[d.action];
+        const stage = company.stage === 'radar' ? 'abordagem' : company.stage;
+        db.prepare(`UPDATE companies SET status = 'em_abordagem', stage = ?, outreach = ?, outreach_at = datetime('now'),
+                    discard_reason = NULL, snoozed_until = NULL, decided_at = COALESCE(decided_at, datetime('now')),
+                    updated_at = datetime('now') WHERE id = ?`).run(stage, o.state, companyId);
+        addEvent(db, companyId, 'contato', [o.event, note].filter(Boolean).join(' — '));
+        return { ok: true, status: 'em_abordagem', stage, snoozedUntil: null };
       }
       default:
         return { ok: false, error: 'ação inválida' };
