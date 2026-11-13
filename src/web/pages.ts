@@ -2,7 +2,7 @@
 import type { DashboardData } from './dashboard.ts';
 import type { UpdateState } from './jobs.ts';
 import { esc, layout, fmtDate, scoreClass, ROLE_LABEL, leadTabs, extLink } from './views.ts';
-import { MODALITIES, type ModalityInfo, type ModalityRow } from './modalities.ts';
+import { MODALITIES, SOURCE_LABEL, type ModalityInfo, type ModalityRow } from './modalities.ts';
 import { STEP_LABEL, type StepId } from '../pipeline/update.ts';
 
 const STAGE_LABEL: Record<string, string> = {
@@ -43,52 +43,47 @@ export function dashboardPage(d: DashboardData, isStatic = false): string {
   return layout('Dashboard · Radar', `${work}
 <h2 style="margin:0 0 10px">Radar</h2>
 <div class="kpis">
-  ${kpi(t.accounts, 'leads no radar', '/')}
-  ${kpi(t.hot, 'leads quentes (nota ≥ 50)')}
-  ${kpi(t.newLast7, 'novos nos últimos 7 dias')}
-  ${kpi(t.withPain, 'com indício de dor', '/radar/vagas')}
-  ${kpi(t.withTrigger, 'com gatilho em 90 dias', '/radar/gatilhos')}
-  ${kpi(t.excluded, 'excluídos (cliente, concorrente)')}
+  ${kpi(t.accounts, 'leads', '/')}
+  ${kpi(t.hot, 'quentes (nota 50+)')}
+  ${kpi(t.newLast7, 'novos na semana')}
 </div>
-<h2 style="margin:0 0 10px">Leads por modalidade</h2>
+<h2 style="margin:0 0 10px">Onde estão os leads</h2>
 <div class="kpis">
-${MODALITIES.map((m) => { const c = d.modalities[m.id]; return `<a class="kpi" href="/radar/${m.id}" style="text-decoration:none;color:inherit"><div class="n">${c.total}</div><div class="l"><strong>${esc(m.label)}</strong> · ${c.companies} empresa(s) · ${c.recent} nos últimos 30 dias</div></a>`; }).join('')}
+${MODALITIES.filter((m) => d.modalities[m.id].companies > 0).map((m) => { const c = d.modalities[m.id]; return `<a class="kpi" href="/radar/${m.id}" style="text-decoration:none;color:inherit"><div class="n">${c.companies}</div><div class="l">${esc(m.label)} →</div></a>`; }).join('')}
 </div>
 <div class="cols">
-  <div class="card"><h2>Distribuição das notas</h2>${bars(d.scoreBuckets)}</div>
-  <div class="card"><h2>Por setor</h2>${bars(d.bySector)}</div>
-  <div class="card"><h2>Oferta sugerida</h2>${bars(d.byOffer)}<p class="muted small">Um lead pode ter mais de uma oferta.</p></div>
-  <div class="card"><h2>Sinais por fonte</h2>${bars(d.bySource)}</div>
-</div>
-<div class="cols" style="margin-top:16px">
   <div class="card"><h2>Melhores leads</h2>
     ${d.topAccounts.map((a) => `<div class="bd-row" style="grid-template-columns:44px 1fr"><div class="score ${a.total >= 50 ? 'hi' : a.total >= 30 ? 'mid' : 'lo'}">${a.total}</div>
-      <div><a href="/empresa/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.offers.map((o) => `<span class="chip offer">${esc(o)}</span>`).join('')}
+      <div><a href="/empresa/${a.id}"><strong>${esc(a.name)}</strong></a> ${a.offers.slice(0, 1).map((o) => `<span class="chip offer">${esc(o)}</span>`).join('')}
       <div class="small muted">${esc(a.why)}</div></div></div>`).join('') || '<p class="muted small">Sem leads ainda.</p>'}
     <p class="small"><a href="/">Ver todos →</a></p></div>
   <div class="card"><h2>Próximas ações</h2>
-    ${d.nextActions.map((a) => `<div class="signal"><a href="/empresa/${a.id}"><strong>${esc(a.name)}</strong></a>
+    ${d.nextActions.slice(0, 8).map((a) => `<div class="signal"><a href="/empresa/${a.id}"><strong>${esc(a.name)}</strong></a>
       <span class="small ${a.due < 0 ? 'run-bad' : 'muted'}">${a.due < 0 ? `atrasada ${-a.due} dia(s)` : a.due === 0 ? 'hoje' : `em ${a.due} dia(s)`}</span>
-      <div class="small">${esc(a.next_action ?? '')}</div></div>`).join('') || '<p class="muted small">Nenhuma próxima ação marcada. Defina na página do lead.</p>'}</div>
+      <div class="small">${esc(a.next_action ?? '')}</div></div>`).join('') || '<p class="muted small">Nenhuma marcada.</p>'}</div>
   <div class="card"><h2>Resultado por fonte</h2>
-    <div class="table-wrap"><table class="small"><thead><tr><th>Fonte de origem</th><th>Leads</th><th>Aprov.</th><th>Contat.</th><th>Resp.</th><th>Reuniões</th></tr></thead><tbody>
-    ${d.bySourceOutcome.map((r) => `<tr><td>${esc(r.source)}</td><td>${r.leads}</td><td>${r.aprovados}</td><td>${r.contatados}</td><td>${r.responderam}</td><td><strong>${r.reunioes}</strong></td></tr>`).join('')}
+    <div class="table-wrap"><table class="small"><thead><tr><th>Fonte</th><th>Leads</th><th>Aprovados</th><th>Contatados</th><th>Responderam</th><th>Reuniões</th></tr></thead><tbody>
+    ${d.bySourceOutcome.map((r) => `<tr><td>${esc(SOURCE_LABEL[r.source] ?? r.source)}</td><td>${r.leads}</td><td>${r.aprovados}</td><td>${r.contatados}</td><td>${r.responderam}</td><td><strong>${r.reunioes}</strong></td></tr>`).join('')}
     </tbody></table></div>
-    <p class="small muted">Marque Contatei, Respondeu e Reunião nos leads: em poucas semanas esta tabela mostra quais fontes trazem conversa de verdade.</p></div>
-  <div class="card"><h2>Decisões</h2>
-    ${bars([{ label: 'Aprovados', count: q.aprovadas }, { label: 'Descartados', count: q.descartadas }, { label: 'Adiados', count: q.adiadas }])}
-    ${d.discardReasons.length ? `<h2 style="margin-top:12px">Motivos de descarte</h2>${bars(d.discardReasons)}<p class="small muted">Use isso para ajustar o radar: muitos “fora do perfil” indicam regras a calibrar.</p>` : ''}</div>
+    <p class="small muted">Mostra quais fontes viram conversa.</p></div>
+  ${d.discardReasons.length ? `<div class="card"><h2>Por que descartamos</h2>${bars(d.discardReasons)}</div>` : ''}
   <div class="card"><h2>Gatilhos recentes</h2>
     ${d.recentTriggers.map((g) => `<div class="signal"><span class="chip">${esc(KIND_LABEL[g.subtype ?? ''] ?? g.subtype ?? 'gatilho')}</span>
       <a href="/empresa/${g.company_id}"><strong>${esc(g.company)}</strong></a>
       <div class="small"><a href="${esc(g.url)}" target="_blank" rel="noopener noreferrer">${esc(g.title)}</a></div>
-      <div class="small muted">${fmt(g.published_at)}</div></div>`).join('') || '<p class="muted small">Nenhum gatilho coletado ainda. Rode a atualização com notícias.</p>'}</div>
+      <div class="small muted">${fmtDate(g.published_at)}</div></div>`).join('') || '<p class="muted small">Nenhum ainda.</p>'}</div>
   <div class="card"><h2>Últimas atualizações</h2>
-    ${d.runs.map((r) => `<div class="signal"><span class="${r.ok ? 'run-ok' : 'run-bad'}">${r.ok ? '✔' : '✖'}</span> <strong>${esc(r.collector)}</strong>
+    ${d.runs.slice(0, 4).map((r) => `<div class="signal"><span class="${r.ok ? 'run-ok' : 'run-bad'}">${r.ok ? '✔' : '✖'}</span> <strong>${esc(r.collector)}</strong>
       <span class="small muted">${fmt(r.started_at)}</span><div class="small muted">${esc(r.summary)}</div></div>`).join('') || '<p class="muted small">Nenhuma atualização registrada.</p>'}
     ${isStatic ? '' : '<p class="small"><a href="/atualizar">Atualizar agora →</a></p>'}</div>
 </div>
-<p class="small muted">Dados de ${fmt(d.generatedAt)}${isStatic ? ' · versão publicada, somente leitura' : ''}.</p>`, isStatic);
+<details class="card more"><summary>Gráficos do radar</summary><div class="cols" style="margin-top:10px">
+  <div><h2>Notas</h2>${bars(d.scoreBuckets)}</div>
+  <div><h2>Setor</h2>${bars(d.bySector)}</div>
+  <div><h2>Oferta</h2>${bars(d.byOffer)}</div>
+  <div><h2>Fonte</h2>${bars(d.bySource)}</div>
+</div></details>
+<p class="small muted">Dados de ${fmt(d.generatedAt)}.</p>`, isStatic);
 }
 
 export function updatePage(state: UpdateState, newsLimit: number): string {
@@ -97,15 +92,14 @@ export function updatePage(state: UpdateState, newsLimit: number): string {
   return layout('Atualizar · Radar', `
 <div class="card">
   <h2>Atualizar o radar</h2>
-  <p class="small muted">Busca vagas (Brasil e América Latina, sem consultorias), procura gatilhos nas notícias, recalcula as notas e regera o painel publicável.
-    As notícias levam alguns minutos (1 consulta a cada 5 s, limite da fonte).</p>
+  <p class="lead">Busca novos leads e recalcula as notas. Leva alguns minutos.</p>
   <form id="f" class="stack">
     <div class="steps">${steps.map((s) => `<label><input type="checkbox" name="step" value="${s}"${checked[s] ? ' checked' : ''}>${esc(STEP_LABEL[s])}${s === 'noticias' ? ` (${newsLimit} leads)` : ''}</label>`).join('')}</div>
-    <p class="small muted" id="pubnote">“Publicar na Vercel” envia o painel para a internet (protegido por senha). Deixe desmarcado para só atualizar localmente.</p>
+    <p class="small muted" id="pubnote">Marque “Publicar” para atualizar o site do time.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button type="submit" id="go">Atualizar agora</button>
-      <button type="button" class="btn secondary preset" data-steps="vagas,site">Só vagas e dor</button>
-      <button type="button" class="btn secondary preset" data-steps="noticias,site">Só liderança e gatilhos</button>
+      <button type="button" class="btn secondary preset" data-steps="vagas,site">Só vagas</button>
+      <button type="button" class="btn secondary preset" data-steps="noticias,site">Só notícias</button>
       <button type="button" class="btn secondary preset" data-steps="tecnologia,site">Só tecnologia</button>
     </div>
     <span id="status" class="small muted"></span>
@@ -150,28 +144,28 @@ export function modalityPage(
       ${r.detail ? `<div class="evidence">${esc(r.detail)}</div>` : ''}</td>
   <td>${r.tags.map((t) => `<span class="chip">${esc(SUBTYPE_LABEL[t] ?? t)}</span>`).join('')}</td>
   <td class="small">${fmtDate(r.date)}</td>
-  <td class="small">${esc(r.source)}</td>
+  <td class="small">${esc(SOURCE_LABEL[r.source] ?? r.source)}</td>
 </tr>`).join('')
     : `<tr><td colspan="6" class="muted">${esc(info.empty)}</td></tr>`;
   const status = lastRun
-    ? lastRun.error ? `última coleta falhou: ${esc(lastRun.error.slice(0, 80))}` : `última coleta: ${fmtDate(lastRun.finished_at)}`
-    : 'ainda não coletada';
+    ? lastRun.error ? 'a última busca falhou' : `atualizado em ${fmtDate(lastRun.finished_at)}`
+    : 'ainda não buscado';
   return layout(`${info.title} · Radar`, `
 ${leadTabs(info.id, tabs)}
 <div class="card">
-  <h2 style="font-size:18px">${esc(info.title)}</h2>
-  <p class="small muted" style="margin:0 0 12px">${esc(info.description)}</p>
+  <h2 style="font-size:18px;margin-bottom:2px">${esc(info.title)}</h2>
+  <p class="lead">${esc(info.description)}</p>
   <form class="filters" method="get" onsubmit="return false" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
-    <label class="small muted">Buscar empresa<br><input name="q" placeholder="nome"></label>
+    <label class="small muted">Buscar<br><input name="q" placeholder="nome da empresa"></label>
     ${facetSelects(info, rows)}
     <label class="small muted">Nota mínima<br><input name="min" type="number" min="0" max="100" style="width:90px"></label>
-    ${isStatic ? '' : `<a class="btn secondary" href="/atualizar">Atualizar ${esc(info.label.toLowerCase())}</a>`}
+    
   </form>
 </div>
 <div class="card">
-  <div class="muted small" style="margin-bottom:8px"><span id="count">${rows.length}</span> item(ns) · ${status}</div>
+  <div class="muted small" style="margin-bottom:8px"><span id="count">${rows.length}</span> resultado(s) · ${status}</div>
   <div class="table-wrap"><table>
-    <thead><tr><th>Nota</th><th>Lead</th><th>O que foi encontrado</th><th>Detalhes</th><th>Data</th><th>Fonte</th></tr></thead>
+    <thead><tr><th>Nota</th><th>Lead</th><th>O que encontramos</th><th>Tipo</th><th>Data</th><th>Fonte</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div>
 </div>${MODALITY_FILTER_SCRIPT}`, isStatic);

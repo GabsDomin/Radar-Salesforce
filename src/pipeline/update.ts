@@ -24,12 +24,12 @@ export type Log = (msg: string) => void;
 export type StepId = 'vagas' | 'noticias' | 'enriquecer' | 'tecnologia' | 'site' | 'publicar';
 
 export const STEP_LABEL: Record<StepId, string> = {
-  vagas: 'Coletar vagas (Gupy, Get on Board e quadros)',
-  noticias: 'Buscar notícias e gatilhos',
-  enriquecer: 'Enriquecer (site, CNPJ, Receita: setor, porte e diretoria)',
-  tecnologia: 'Detectar tecnologia (CVM, site/DNS e casos de clientes Salesforce)',
-  site: 'Gerar painel estático',
-  publicar: 'Publicar na Vercel',
+  vagas: 'Vagas',
+  noticias: 'Notícias',
+  enriquecer: 'Dados da empresa (setor, porte, diretoria)',
+  tecnologia: 'Tecnologia usada',
+  site: 'Preparar o site',
+  publicar: 'Publicar',
 };
 
 // Registra a execução em collection_runs (aparece no histórico do painel).

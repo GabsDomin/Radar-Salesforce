@@ -4,6 +4,7 @@
 import type { PoliteClient } from '../http/client.ts';
 import type { JobPosting } from './types.ts';
 import { detectCountry, isAllowedCountry } from '../normalize/location.ts';
+import { htmlToText } from '../util/excerpt.ts';
 
 export type BoardKind = 'greenhouse' | 'lever' | 'workable' | 'ashby' | 'workday';
 export interface Board {
@@ -20,15 +21,7 @@ export function regionOf(location: string): string | null {
   return isAllowedCountry(iso) ? iso : null;
 }
 
-function stripHtml(s: string): string {
-  return s
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/<[^>]+>/g, ' ')
-    // O Greenhouse escapa duas vezes: depois do primeiro passo ainda sobram entidades como &nbsp;.
-    .replace(/&nbsp;|&#160;/g, ' ').replace(/&amp;/g, '&').replace(/&[a-z]+;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+const stripHtml = htmlToText; // mantém parágrafos e itens de lista para recortar frases inteiras
 
 // ---------- Greenhouse ----------
 interface GhJob {

@@ -165,10 +165,12 @@ export function updateCompany(
   if (before && stage && stage !== before.stage) {
     db.prepare('INSERT INTO account_events (company_id, kind, detail) VALUES (?, ?, ?)').run(id, 'etapa', `${before.stage} → ${stage}`);
   }
+  // Sem o campo no formulário, a exclusão atual fica como está (descartar com motivo é o caminho normal).
+  const keepExclusion = data.excluded_reason === undefined ? 1 : 0;
   db.prepare(`
     UPDATE companies SET status = COALESCE(?, status), stage = COALESCE(?, stage), notes = ?, next_action = ?,
-      next_action_at = ?, excluded_reason = ?, updated_at = datetime('now') WHERE id = ?`)
-    .run(status, stage, data.notes ?? null, data.next_action || null, data.next_action_at || null, excluded, id);
+      next_action_at = ?, excluded_reason = CASE WHEN ? THEN excluded_reason ELSE ? END, updated_at = datetime('now') WHERE id = ?`)
+    .run(status, stage, data.notes ?? null, data.next_action || null, data.next_action_at || null, keepExclusion, excluded, id);
 }
 
 export function lastRuns(db: DB) {

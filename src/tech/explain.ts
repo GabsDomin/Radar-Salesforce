@@ -1,5 +1,7 @@
 // Traduz a evidência técnica (registro SPF, CNAME, trecho de HTML) para uma frase que um vendedor entende.
 // A evidência bruta continua no banco; isto só muda o que aparece na tela.
+// Trechos de vaga gravados no formato antigo (cortados no meio da palavra) também são arrumados aqui.
+import { tidyStoredSnippet } from '../util/excerpt.ts';
 
 // Serviços conhecidos que aparecem em registros SPF (quem envia e-mail em nome da empresa).
 const SPF_SERVICES: [RegExp, string][] = [
@@ -42,11 +44,11 @@ export function explainSpf(record: string, vendor: string, domain?: string): str
       if (hit[1] !== main && !hit[1].endsWith(main)) others.add(hit[1]); // "Marketing Cloud" = "Salesforce Marketing Cloud"
     } else if (!domain || !inc.includes(domain.split('.')[0])) unknown++;
   }
-  const who = domain ? `O domínio ${domain}` : 'O domínio da empresa';
-  let text = `${who} autoriza ${main} a enviar e-mails em seu nome (registro SPF do DNS): sinal de que usa a ferramenta com clientes.`;
+  const who = domain ?? 'A empresa';
+  let text = `${who} envia e-mails pelo ${main} (configuração de e-mail da empresa).`;
   const list = [...others];
-  if (list.length && unknown) list.push(unknown === 1 ? 'mais 1 serviço' : `mais ${unknown} serviços`);
-  if (list.length) text += ` Também envia e-mail por ${listPt(list)}.`;
+  if (list.length && unknown) list.push(unknown === 1 ? 'mais 1' : `mais ${unknown}`);
+  if (list.length) text += ` Também usa: ${listPt(list)}.`;
   return text;
 }
 
@@ -78,7 +80,7 @@ export function explainHtml(vendor: string): string {
 // Evidência legível para qualquer sinal; só sinais de tecnologia por DNS/site são traduzidos.
 export function readableEvidence(s: { type: string; evidence: string | null; meta: string | null }): string {
   const ev = s.evidence ?? '';
-  if (s.type !== 'tecnologia' || !ev || !s.meta) return ev;
+  if (s.type !== 'tecnologia' || !ev || !s.meta) return tidyStoredSnippet(ev);
   let meta: { vendor?: string; how?: string; domain?: string };
   try { meta = JSON.parse(s.meta); } catch { return ev; }
   if (!meta.vendor) return ev;

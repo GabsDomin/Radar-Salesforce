@@ -15,7 +15,7 @@ ponto tem uma regra, um motivo em texto e os `signalIds` que o comprovam.
 |---|---|---|
 | Vaga Salesforce aberta (v1.4) | até 40 | **Quanto mais tempo aberta, mais pontos** (dificuldade de contratar → alocação). Vaga técnica aberta: 10 + bônus por tempo (15+ dias: +7, 30+: +14, 45+: +20, 60+: +25); **+5** se houver 2+ vagas técnicas ou vaga sênior/arquitetura. Vaga de outra área que só cita Salesforce: 8 fixos. Vaga que sumiu da fonte (21+ dias sem aparecer), banco de talentos ou aberta há mais de 180 dias: 3 |
 | Tecnologia Salesforce | até 20 | 20 se confirmada no site/DNS (etapa 6), 10 se só citada em vaga |
-| Gatilho recente (≤90 dias) | 15 | Notícia de expansão, fusão, nova diretoria (etapa 8) |
+| Momento da empresa (gatilho em 90 dias) | 15 | Notícia de expansão, fusão, nova diretoria (etapa 8) |
 
 ## Ajuste
 | Regra | Pontos | Quando se aplica |

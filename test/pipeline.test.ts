@@ -257,7 +257,7 @@ test('vaga aberta há mais tempo dá nota maior; fechada, banco de talentos e pe
   assert.equal(pts([job(1, 'Dev Salesforce', 35)]).points, 24);
   assert.equal(pts([job(1, 'Dev Salesforce', 50)]).points, 30);
   assert.equal(pts([job(1, 'Dev Salesforce', 75)]).points, 35);
-  assert.match(pts([job(1, 'Dev Salesforce', 75)]).reason, /aberta há 75 dia\(s\).*dificuldade de contratar/);
+  assert.match(pts([job(1, 'Dev Salesforce', 75)]).reason, /aberta há 75 dias: difícil de contratar/);
   assert.equal(pts([job(1, 'Dev Salesforce', 75), job(2, 'Admin Salesforce', 5)]).points, 40); // + várias vagas
   // Não contam como vaga aberta:
   assert.equal(pts([job(1, 'Dev Salesforce', 75, 40)]).points, 3);                      // sumiu da fonte há 40 dias

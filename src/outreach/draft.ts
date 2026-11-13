@@ -25,9 +25,9 @@ export interface DraftInput {
 export interface Draft { subject: string; body: string; targetRole: string }
 
 export const TARGET_ROLE: Record<Offer, string> = {
-  Improve: 'Gestor(a) de TI ou de CRM, Tech Lead Salesforce, ou quem abriu a vaga (RH / Tech Recruiter)',
-  Keep: 'Gerente de CRM ou de Sistemas Comerciais, Product Owner do Salesforce, Gerente de TI',
-  'Ágil': 'CIO / Diretor(a) de TI e Diretor(a) Comercial ou de Marketing (patrocinador do projeto)',
+  Improve: 'Gestor de TI ou de CRM, ou quem abriu a vaga',
+  Keep: 'Gerente de CRM ou de TI',
+  'Ágil': 'Diretor de TI, Comercial ou de Marketing',
 };
 
 const list = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`);

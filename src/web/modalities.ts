@@ -6,6 +6,9 @@
 import type { DB } from '../db/index.ts';
 import { countryName } from '../normalize/location.ts';
 import { readableEvidence } from '../tech/explain.ts';
+import { tidyStoredSnippet } from '../util/excerpt.ts';
+import { SOURCE_LABEL } from './sourceLabels.ts';
+export { SOURCE_LABEL };
 
 export type ModalityId = 'vagas' | 'lideranca' | 'gatilhos' | 'dor' | 'concorrente' | 'tecnologia';
 
@@ -21,33 +24,33 @@ export interface ModalityInfo {
 
 export const MODALITIES: ModalityInfo[] = [
   {
-    id: 'vagas', label: 'Vagas', title: 'Vagas no Brasil e na América Latina', collector: 'vagas',
-    description: 'Vagas de Salesforce (empresa contratando agora) e vagas de CRM concorrente (candidata a migração). Consultorias, integradoras e recrutadoras ficam de fora.',
-    empty: 'Nenhuma vaga com esses filtros. Rode a atualização de vagas.',
+    id: 'vagas', label: 'Vagas', title: 'Vagas', collector: 'vagas',
+    description: 'Empresas contratando para Salesforce ou CRM. Sem consultorias.',
+    empty: 'Nenhuma vaga com esses filtros.',
     facets: [{ key: 'tipo', label: 'Tipo de vaga' }, { key: 'dor', label: 'Insatisfação' }, { key: 'crm', label: 'CRM' }, { key: 'cargo', label: 'Cargo' }, { key: 'pais', label: 'País' }, { key: 'fonte', label: 'Fonte' }],
   },
   {
     id: 'lideranca', label: 'Liderança', title: 'Mudança de liderança', collector: 'noticias',
-    description: 'Diretor ou executivo novo costuma rever ferramentas no primeiro ano. Fonte: notícias (GDELT) em português e espanhol.',
-    empty: 'Nenhuma troca de liderança encontrada ainda. Rode a atualização de notícias.',
+    description: 'Diretor novo costuma rever as ferramentas no primeiro ano.',
+    empty: 'Nenhuma troca de liderança encontrada ainda.',
     facets: [{ key: 'area', label: 'Área' }],
   },
   {
     id: 'gatilhos', label: 'Outros gatilhos', title: 'Fusões, investimentos e expansão', collector: 'noticias',
-    description: 'Fusão exige integrar dois CRMs; investimento e expansão trazem orçamento e novos usuários.',
-    empty: 'Nenhum gatilho encontrado ainda. Rode a atualização de notícias.',
+    description: 'Momentos em que a empresa costuma rever o CRM.',
+    empty: 'Nenhum gatilho encontrado ainda.',
     facets: [{ key: 'tipo', label: 'Tipo' }, { key: 'fonte', label: 'Fonte' }],
   },
   {
-    id: 'concorrente', label: 'CRM concorrente', title: 'Empresas que usam CRM concorrente', collector: 'vagas',
-    description: 'Vagas que pedem HubSpot, RD Station, Dynamics, Zoho, Pipedrive, SAP ou Oracle, ou site/DNS com esses sistemas. Candidatas a migração para Salesforce.',
-    empty: 'Nenhuma empresa com CRM concorrente ainda. Rode a atualização de vagas.',
+    id: 'concorrente', label: 'CRM concorrente', title: 'Usam outro CRM', collector: 'vagas',
+    description: 'Usam HubSpot, RD Station, Dynamics e outros: podem migrar para Salesforce.',
+    empty: 'Nenhuma empresa com outro CRM ainda.',
     facets: [{ key: 'crm', label: 'CRM' }, { key: 'onde', label: 'Onde foi visto' }, { key: 'fonte', label: 'Fonte' }],
   },
   {
-    id: 'tecnologia', label: 'Tecnologia', title: 'Tecnologia detectada no site e no DNS', collector: 'tecnologia',
-    description: 'Pardot, Marketing Cloud, Web-to-Lead, chat do Service Cloud, Experience Cloud, ou CRM concorrente, detectados no site ou nos registros DNS da empresa.',
-    empty: 'Nenhuma tecnologia detectada ainda. Rode a detecção de tecnologia.',
+    id: 'tecnologia', label: 'Tecnologia', title: 'Tecnologia', collector: 'tecnologia',
+    description: 'Ferramentas encontradas no site e no e-mail da empresa.',
+    empty: 'Nenhuma tecnologia encontrada ainda.',
     facets: [{ key: 'fornecedor', label: 'Fornecedor' }, { key: 'tipo', label: 'Salesforce ou concorrente' }, { key: 'meio', label: 'Como foi detectado' }],
   },
 ];
@@ -109,8 +112,11 @@ function toRow(id: ModalityId, r: RawRow): ModalityRow {
   const tags: string[] = [];
   let detail = readableEvidence(r);
   if (id === 'vagas') {
-    if (r.subtype) tags.push(r.subtype);
-    for (const c of (meta.clouds ?? []) as string[]) tags.push(c);
+    // Só o que informa: cargo conhecido e até 3 clouds citadas ("outro" e "não especificada" não dizem nada).
+    if (r.subtype && r.subtype !== 'outro') tags.push(r.subtype);
+    const clouds = ((meta.clouds ?? []) as string[]).filter((c) => !c.includes('não especificada'));
+    tags.push(...clouds.slice(0, 3), ...(clouds.length > 3 ? [`+${clouds.length - 3}`] : []));
+    if (((meta.crms ?? []) as string[]).length && meta.salesforce === false) tags.push(...(meta.crms as string[]));
   } else if (id === 'lideranca') {
     if (meta.area) tags.push(`área: ${meta.area}`);
     if (meta.mentionsSalesforce) tags.push('cita Salesforce');
@@ -124,7 +130,7 @@ function toRow(id: ModalityId, r: RawRow): ModalityRow {
   } else {
     const pain = (meta.pain ?? []) as { label: string; evidence: string }[];
     for (const p of pain) tags.push(p.label);
-    detail = pain.map((p) => p.evidence).join(' | ');
+    detail = pain.map((p) => tidyStoredSnippet(p.evidence)).join(' | ');
   }
   return {
     signalId: r.id, companyId: r.company_id, company: r.company, total: r.total,
@@ -134,11 +140,6 @@ function toRow(id: ModalityId, r: RawRow): ModalityRow {
   };
 }
 
-const SOURCE_LABEL: Record<string, string> = {
-  gupy: 'Gupy', getonbrd: 'Get on Board', greenhouse: 'Greenhouse', lever: 'Lever', smartrecruiters: 'SmartRecruiters',
-  workable: 'Workable', ashby: 'Ashby', workday: 'Workday', receita: 'Receita (diretoria)', 'linkedin-alerta': 'Alerta LinkedIn (e-mail)',
-  gdelt: 'Notícias', dns: 'DNS', site: 'Site', 'salesforce-casos': 'Casos Salesforce', manual: 'Manual',
-};
 const CARGO_LABEL: Record<string, string> = {
   arquiteto: 'Arquiteto', tech_lead: 'Tech Lead', developer: 'Developer', admin: 'Admin', funcional: 'Funcional/Consultor',
   qa: 'QA', usuario_crm: 'Usuário de CRM', outro: 'Outro',

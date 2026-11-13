@@ -45,7 +45,7 @@ test('Hoje separa por oferta: vaga aberta → Improve, CRM concorrente → Ágil
   assert.match(d.agil[0].draft.subject, /HubSpot → Salesforce na Beta Seguros/);
 
   const html = todayPage(d);
-  assert.match(html, /Improve: alocação para quem está contratando/);
+  assert.match(html, /Improve · alocação/);
   assert.match(html, /Rascunho de mensagem/);
   assert.match(html, /data-decide="aprovar"/);
   assert.doesNotMatch(todayPage(d, true), /data-decide=/); // site publicado: só leitura

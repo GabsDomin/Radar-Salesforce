@@ -72,18 +72,20 @@ export function dashboardData(db: DB, hotThreshold = 50): DashboardData {
   const topAccounts = all<{ id: number; name: string; total: number; offers: string; breakdown: string }>(db,
     `SELECT c.id, c.name, s.total, s.offers, s.breakdown FROM companies c JOIN scores s ON s.company_id = c.id
      WHERE ${visible} ORDER BY s.total DESC, c.name LIMIT 8`).map((r) => {
-    const top = (JSON.parse(r.breakdown) as { rule: string; points: number }[]).filter((b) => b.points > 0).sort((a, b) => b.points - a.points)[0];
+    const top = (JSON.parse(r.breakdown) as { rule: string; points: number; reason: string; group: string }[]).filter((b) => b.points > 0 && b.group !== 'aderencia').sort((a, b) => b.points - a.points)[0];
     return {
       id: r.id, name: r.name, total: r.total,
       offers: (JSON.parse(r.offers) as { offer: string }[]).map((o) => o.offer),
-      why: top ? `+${top.points} ${top.rule}` : '—',
+      why: top ? top.reason : '',
     };
   });
 
   const recentTriggers = all<DashboardData['recentTriggers'][number]>(db,
     `SELECT x.id, x.company_id, c.name AS company, x.subtype, x.title, x.url, x.published_at
      FROM signals x JOIN companies c ON c.id = x.company_id
-     WHERE ${visible} AND x.type = 'gatilho' ORDER BY COALESCE(x.published_at, x.collected_at) DESC LIMIT 8`);
+     WHERE ${visible} AND x.type = 'gatilho' ORDER BY COALESCE(x.published_at, x.collected_at) DESC LIMIT 40`)
+    // Um por empresa: a mesma empresa com três diretores novos aparece uma vez.
+    .filter((g, i, arr) => arr.findIndex((o) => o.company_id === g.company_id) === i).slice(0, 5);
 
   const runs = all<{ collector: string; started_at: string; finished_at: string | null; stats: string | null; error: string | null }>(db,
     'SELECT collector, started_at, finished_at, stats, error FROM collection_runs ORDER BY id DESC LIMIT 8').map((r) => ({

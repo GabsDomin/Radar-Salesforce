@@ -6,6 +6,7 @@ import { isIdentifiableCompany, looksLikeConsultancyName } from '../normalize/co
 import { isAllowedCountry } from '../normalize/location.ts';
 import type { JobPosting } from '../sources/types.ts';
 import { upsertCompany, exclusionFor } from './companies.ts';
+import { excerptFor } from '../util/excerpt.ts';
 
 export interface IngestStats {
   received: number;
@@ -111,11 +112,8 @@ export function purgeConsultancies(db: DB): { signals: number; companies: number
   return { signals, companies };
 }
 
-// Trecho da descrição em torno da primeira menção a Salesforce, para servir de evidência.
-export function evidenceSnippet(description: string, radius = 160): string {
-  const text = description.replace(/&nbsp;|&#160;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
-  const idx = text.search(/salesforce|marketing cloud|service cloud|sales cloud|pardot|apex|lwc|hubspot|rd ?station|dynamics|zoho|pipedrive|sap crm|c4c|siebel|marketo|ploomes|agendor|bitrix/i);
-  if (idx < 0) return text.slice(0, radius * 2);
-  const start = Math.max(0, idx - radius);
-  return (start > 0 ? '…' : '') + text.slice(start, idx + radius) + (idx + radius < text.length ? '…' : '');
+// Frase(s) inteiras da descrição em torno da primeira menção a Salesforce/CRM, para servir de evidência.
+const EVIDENCE_TERM = /salesforce|marketing cloud|service cloud|sales cloud|pardot|apex|lwc|hubspot|rd ?station|dynamics|zoho|pipedrive|sap crm|c4c|siebel|marketo|ploomes|agendor|bitrix/i;
+export function evidenceSnippet(description: string): string {
+  return excerptFor(description, EVIDENCE_TERM);
 }

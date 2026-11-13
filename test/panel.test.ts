@@ -41,7 +41,7 @@ test('rotas: dashboard, status e execução com bloqueio de outra origem', async
     assert.equal((await fetch(base + '/dashboard')).status, 200);
     const page = await (await fetch(base + '/atualizar')).text();
     assert.match(page, /Atualizar agora/);
-    assert.match(updatePage(runner.state, 30), /Publicar na Vercel/);
+    assert.match(updatePage(runner.state, 30), /Publicar/);
     const status = await (await fetch(base + '/atualizar/status')).json() as { running: boolean };
     assert.equal(status.running, false);
 

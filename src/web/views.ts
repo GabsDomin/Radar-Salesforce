@@ -6,6 +6,8 @@ import { DISCARD_REASONS, DISCARD_LABEL } from '../pipeline/decisions.ts';
 import { MANUAL_ORIGINS } from '../pipeline/manualLeads.ts';
 import { VISAO_LABEL, visoesOf, type Visao } from './queries.ts';
 import { readableEvidence } from '../tech/explain.ts';
+import { SOURCE_LABEL } from './sourceLabels.ts';
+import type { TodayItem } from './today.ts';
 
 // Abas da seção Leads: a lista completa e as modalidades (ver modalities.ts).
 const LEAD_TABS: [string, string, string][] = [
@@ -133,6 +135,9 @@ dialog label { display: block; font-size: 12px; color: var(--muted); } dialog se
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; opacity: 0; pointer-events: none; transition: .2s; z-index: 10; }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 tr.leaving { opacity: 0; transition: opacity .25s; }
+details.more { margin-top: 8px; } details.more > summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+details.more[open] > summary { margin-bottom: 6px; }
+.lead { font-size: 13px; color: var(--muted); margin: 2px 0 12px; }
 kbd { border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 11px; background: var(--bg); }
 </style>
 </head>
@@ -172,14 +177,17 @@ export function listPage(
     ? `<label>Situação<select name="visao">${VISAO_LABEL.map(([v, label]) => option(v === 'padrao' ? '' : v, label, '')).join('')}</select></label>`
     : (visao !== 'padrao' ? `<input type="hidden" name="visao" value="${esc(visao)}">` : '')}
   <label>Buscar<input name="q" value="${esc(f.q)}" placeholder="nome da empresa"></label>
+  <label>Oferta<select name="oferta">${option('', 'Todas', f.oferta)}${option('Improve', 'Improve (alocação)', f.oferta)}${option('Ágil', 'Ágil (projeto)', f.oferta)}${option('Keep', 'Keep (sustentação)', f.oferta)}</select></label>
   <label>Setor<select name="setor">${option('', 'Todos', f.setor)}${option('industria', 'Indústria', f.setor)}${option('financeiro', 'Serv. financeiros', f.setor)}${option('agro', 'Agronegócio', f.setor)}${option('desconhecido', 'Não identificado', f.setor)}</select></label>
-  <label>Oferta<select name="oferta">${option('', 'Todas', f.oferta)}${option('Keep', 'Keep (sustentação)', f.oferta)}${option('Improve', 'Improve (alocação)', f.oferta)}${option('Ágil', 'Ágil (projeto)', f.oferta)}</select></label>
-  <label>Sinal<select name="sinal">${option('', 'Todos', f.sinal)}${option('vaga', 'Vaga', f.sinal)}${option('tecnologia', 'Tecnologia', f.sinal)}${option('gatilho', 'Gatilho', f.sinal)}</select></label>
-  <label>Status<select name="status">${option('', 'Todos', f.status)}${STATUSES.map((s) => option(s, STATUS_LABEL[s], f.status)).join('')}</select></label>
   <label>Nota mínima<input name="min" type="number" min="0" max="100" value="${esc(f.min)}" style="width:90px"></label>
-  <label><span>Excluídas</span><select name="excluidas">${option('', 'Ocultar', f.excluidas)}${option('1', 'Mostrar', f.excluidas)}</select></label>
-  <button type="submit">Filtrar</button>
-  ${isStatic ? '<a class="btn secondary" href="/radar.csv" download>Exportar CSV</a>' : `<a class="btn secondary" href="/export.csv${qs ? '?' + qs : ''}">Exportar CSV</a>`}
+  ${isStatic ? '' : '<button type="submit">Filtrar</button>'}
+  <details class="more" style="flex-basis:100%"${f.sinal || f.status || f.excluidas ? ' open' : ''}><summary>Mais filtros</summary>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
+      <label>Sinal<select name="sinal">${option('', 'Todos', f.sinal)}${option('vaga', 'Vaga', f.sinal)}${option('tecnologia', 'Tecnologia', f.sinal)}${option('gatilho', 'Gatilho', f.sinal)}</select></label>
+      <label>Status<select name="status">${option('', 'Todos', f.status)}${STATUSES.map((s) => option(s, STATUS_LABEL[s], f.status)).join('')}</select></label>
+      <label><span>Excluídas</span><select name="excluidas">${option('', 'Ocultar', f.excluidas)}${option('1', 'Mostrar', f.excluidas)}</select></label>
+      ${isStatic ? '<a class="btn secondary" href="/radar.csv" download>Baixar planilha (CSV)</a>' : `<a class="btn secondary" href="/export.csv${qs ? '?' + qs : ''}">Baixar planilha (CSV)</a>`}
+    </div></details>
 </form>`;
 
   const body = rows.length
@@ -200,27 +208,27 @@ export function listPage(
       ${r.excluded_reason ? `<span class="chip flag">excluída: ${esc(r.excluded_reason)}</span>` : ''}
       ${r.review_count ? `<span class="chip flag">revisar</span>` : ''}
       ${bd.some((b) => b.group === 'dor' && b.points > 0) ? `<span class="chip pain" title="Há indício de insatisfação com o sistema atual">dor</span>` : ''}
-      <div class="small muted">${top.map((b) => `+${b.points} ${esc(b.rule)}`).join(' · ')}</div></td>
+      <div class="small muted">${top.map((b) => esc(b.rule)).join(' · ')}</div></td>
   <td>${offers.map((o) => `<span class="chip offer">${esc(o.offer)}</span>`).join('') || '<span class="muted">—</span>'}</td>
-  <td>${r.sector ? esc(SECTOR_LABEL[r.sector] ?? r.sector) + (r.sector_source?.startsWith('inferido') ? ' <span class="muted small">(inferido)</span>' : '') : '<span class="muted">—</span>'}</td>
+  <td>${r.sector ? esc(SECTOR_LABEL[r.sector] ?? r.sector) + (r.sector_source?.startsWith('inferido') ? ' <span class="muted small">(a confirmar)</span>' : '') : '<span class="muted">—</span>'}</td>
   <td>${esc([r.city, r.state].filter(Boolean).join(' / ')) || '<span class="muted">—</span>'}</td>
-  <td>${(r.signal_types ?? '').split(',').filter(Boolean).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}<span class="small muted">${r.job_count} vaga(s)</span></td>
+  <td>${(r.signal_types ?? '').split(',').filter(Boolean).map((t) => `<span class="chip">${esc(t === 'vaga' ? `${r.job_count} vaga${r.job_count === 1 ? '' : 's'}` : SIGNAL_TYPE_LABEL[t] ?? t)}</span>`).join('')}</td>
   <td class="small">${fmtDate(r.last_signal_at)}</td>
   <td class="small">${statusChip(r)}</td>
   ${isStatic ? '' : `<td><div class="actions">${decisionButtons(r.id, r.status, true, r.outreach)}</div></td>`}
 </tr>`;
       }).join('')
-    : `<tr><td colspan="${isStatic ? 8 : 9}" class="muted">${visao === 'triagem' ? 'Nada para triar agora.' : 'Nenhum lead com esses filtros.'} Use “Atualizar” para buscar novos sinais.</td></tr>`;
+    : `<tr><td colspan="${isStatic ? 8 : 9}" class="muted">${visao === 'triagem' ? 'Nada para triar agora.' : 'Nenhum lead com esses filtros.'}</td></tr>`;
 
   const addLead = isStatic ? '' : `
 <div style="display:flex;justify-content:flex-end;margin:-6px 0 10px"><button type="button" onclick="document.getElementById('dlg-novo').showModal()">+ Adicionar lead</button></div>
 <dialog id="dlg-novo"><form method="post" action="/leads/novo" class="stack">
   <h2>Adicionar lead</h2>
-  <p class="small muted" style="margin:0">Para indicação, ex-cliente, empresa vista em evento ou contato próprio. Entra com +15 na nota.</p>
+  <p class="small muted" style="margin:0">Indicação, ex-cliente ou empresa vista em evento.</p>
   <label>Empresa<input name="name" required minlength="2"></label>
   <label>Origem<select name="origin">${MANUAL_ORIGINS.map((o) => `<option value="${o.id}">${esc(o.label)}</option>`).join('')}</select></label>
-  <label>Detalhe (quem indicou, qual evento...)<input name="detail"></label>
-  <label>Site (opcional, ativa a detecção de tecnologia)<input name="domain" placeholder="empresa.com.br"></label>
+  <label>Detalhe<input name="detail" placeholder="quem indicou, qual evento"></label>
+  <label>Site (opcional)<input name="domain" placeholder="empresa.com.br"></label>
   <div class="actions"><button type="submit">Adicionar</button><button type="button" class="btn secondary" onclick="this.closest('dialog').close()">Cancelar</button></div>
 </form></dialog>`;
   return layout('Leads · Radar', `
@@ -229,10 +237,10 @@ ${addLead}
 ${situacao}
 ${filters}
 <div class="card">
-  <div class="muted small" style="margin-bottom:8px"><span id="count">${rows.length}</span> lead(s) · ordenados por nota
-    ${lastRun ? ` · última coleta: ${esc(lastRun.collector)} em ${fmtDate(lastRun.finished_at)}` : ''}</div>
+  <div class="muted small" style="margin-bottom:8px"><span id="count">${rows.length}</span> lead(s), maior nota primeiro
+    ${lastRun ? ` · atualizado em ${fmtDate(lastRun.finished_at)}` : ''}</div>
   <div class="table-wrap"><table data-visao-page="${esc(visao)}">
-    <thead><tr><th>Nota</th><th>Lead</th><th>Oferta sugerida</th><th>Setor</th><th>Local</th><th>Sinais</th><th>Último sinal</th><th>Situação</th>${isStatic ? '' : '<th>Decidir</th>'}</tr></thead>
+    <thead><tr><th>Nota</th><th>Lead</th><th>Oferta</th><th>Setor</th><th>Local</th><th>Sinais</th><th>Último sinal</th><th>Situação</th>${isStatic ? '' : '<th></th>'}</tr></thead>
     <tbody>${body}</tbody>
   </table></div>
 </div>${isStatic ? STATIC_FILTER_SCRIPT : LIST_DECISION_SCRIPT}`, isStatic);
@@ -256,6 +264,19 @@ document.addEventListener('radar:decided', function (e) {
 });
 </script>`;
 
+const SIGNAL_TYPE_LABEL: Record<string, string> = { vaga: 'Vaga', tecnologia: 'Tecnologia', gatilho: 'Gatilho' };
+const OFFER_HINT: Record<string, string> = {
+  Improve: 'alocação de profissional', 'Ágil': 'projeto', Keep: 'sustentação',
+};
+const fmtSince = (since: string) => since.split('-').reverse().join('/');
+
+// "MARIA DA SILVA" (como vem da Receita) → "Maria da Silva".
+export function personName(n: string): string {
+  if (n !== n.toUpperCase()) return n;
+  return n.toLowerCase().replace(/(^|\s)(\p{L})/gu, (_m, sp: string, ch: string) => sp + ch.toUpperCase())
+    .replace(/\s(Da|De|Do|Das|Dos|E)(?=\s)/g, (m) => m.toLowerCase());
+}
+
 export function detailPage(d: {
   company: CompanyRow & { notes: string | null; next_action: string | null; next_action_at: string | null; rules_version: string | null; domain: string | null; cnpj: string | null };
   signals: SignalRow[];
@@ -264,83 +285,113 @@ export function detailPage(d: {
   offers: OfferSuggestion[];
   events?: { kind: string; detail: string | null; created_at: string }[];
   contacts?: { id: number; name: string; role: string | null; since: string | null; channel: string | null; origin: string }[];
+  plan?: TodayItem | null;
 }, isStatic = false): string {
   const c = d.company;
   const EVENT_LABEL: Record<string, string> = {
-    aprovada: 'Aprovada', descartada: 'Descartada', adiada: 'Adiada', reaberta: 'Reaberta', etapa: 'Etapa do funil',
+    aprovada: 'Aprovada', descartada: 'Descartada', adiada: 'Adiada', reaberta: 'Reaberta', etapa: 'Etapa',
     cadastrada: 'Cadastrada à mão', juncao: 'Duplicado juntado', contato: 'Abordagem',
   };
   const timeline = (d.events ?? []).map((e) => `<div class="ev"><strong>${esc(EVENT_LABEL[e.kind] ?? e.kind)}</strong>
-    ${e.detail ? ` · ${esc(e.detail)}` : ''}<div class="small muted">${fmtDate(e.created_at)}</div></div>`).join('')
-    || '<p class="small muted">Nenhuma decisão registrada ainda.</p>';
-  const bd = d.breakdown.map((b) => `
-<div class="bd-row">
-  <div class="bd-pts${b.points < 0 ? ' neg' : ''}">${b.points > 0 ? '+' : ''}${b.points}${b.max ? `<span class="muted small">/${b.max}</span>` : ''}</div>
-  <div><strong>${esc(b.rule)}</strong><div class="small">${esc(b.reason)}</div>
-    ${b.signalIds.length ? `<div class="small muted">evidências: ${b.signalIds.map((id) => `<a href="#sinal-${id}">#${id}</a>`).join(', ')}</div>` : ''}</div>
-</div>`).join('');
+    ${e.detail ? ` · ${esc(e.detail)}` : ''} <span class="small muted">${fmtDate(e.created_at)}</span></div>`).join('')
+    || '<p class="small muted">Nenhuma decisão ainda.</p>';
 
-  const offers = d.offers.length
-    ? d.offers.map((o) => `<div><span class="chip offer">${esc(o.offer)}</span><ul class="small">${o.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>`).join('')
-    : '<p class="muted small">Sem sinal suficiente para sugerir oferta.</p>';
+  // Nota: primeiro o que pontuou; as regras sem ponto ficam recolhidas.
+  const bdRow = (b: BreakdownItem) => `
+<div class="bd-row">
+  <div class="bd-pts${b.points < 0 ? ' neg' : ''}">${b.points > 0 ? '+' : ''}${b.points}</div>
+  <div><strong>${esc(b.rule)}</strong><div class="small muted">${esc(b.reason)}</div></div>
+</div>`;
+  const scored = d.breakdown.filter((b) => b.points !== 0);
+  const zero = d.breakdown.filter((b) => b.points === 0);
+  const bd = (scored.map(bdRow).join('') || '<p class="small muted">Nenhum ponto ainda.</p>')
+    + (zero.length ? `<details class="more"><summary>O que ainda não pontuou (${zero.length})</summary>${zero.map(bdRow).join('')}</details>` : '');
+
+  // O que fazer: oferta, motivo, com quem falar e rascunho (mesma lógica da página Hoje).
+  const p = d.plan;
+  const otherOffers = d.offers.filter((o) => !p || o.offer !== p.offer);
+  const plan = p ? `
+    <div class="card"><h2>O que fazer</h2>
+      <div><span class="chip offer">${esc(p.offer)}</span> <span class="small muted">${esc(OFFER_HINT[p.offer] ?? '')}</span></div>
+      <p style="margin:8px 0">${extLink(p.evidenceUrl, esc(p.reason))}</p>
+      <div class="small"><strong>Com quem falar:</strong> ${esc(p.draft.targetRole)}</div>
+      <details class="more"><summary>Rascunho de mensagem</summary>
+        <div class="small muted" style="margin:6px 0 4px">Assunto: ${esc(p.draft.subject)}</div>
+        <textarea readonly rows="9" style="width:100%">${esc(p.draft.body)}</textarea>
+        <button type="button" class="btn secondary sm" data-copy>Copiar</button>
+      </details>
+      ${otherOffers.length ? `<div class="small muted" style="margin-top:8px">Também pode encaixar: ${otherOffers.map((o) => esc(o.offer)).join(', ')}</div>` : ''}
+    </div>`
+    : `<div class="card"><h2>O que fazer</h2><p class="small muted" style="margin:0">Sem motivo forte para abordar agora.${d.offers.length ? ` Oferta possível: ${d.offers.map((o) => esc(o.offer)).join(', ')}.` : ''}</p></div>`;
 
   const signals = d.signals.map((s) => {
     const meta = s.meta ? JSON.parse(s.meta) : {};
+    const clouds = ((meta.clouds ?? []) as string[]).filter((cl) => !cl.includes('não especificada'));
     return `
 <div class="signal" id="sinal-${s.id}">
-  <div><span class="chip">#${s.id} ${esc(s.type)}</span>${s.subtype ? `<span class="chip">${esc(ROLE_LABEL[s.subtype] ?? s.subtype)}</span>` : ''}
-    ${(meta.clouds ?? []).map((cl: string) => `<span class="chip">${esc(cl)}</span>`).join('')}
-    ${s.review_flag ? `<span class="chip flag">${esc(s.review_flag)}</span>` : ''}</div>
+  <div><span class="chip">${esc(SIGNAL_TYPE_LABEL[s.type] ?? s.type)}</span>${s.subtype && s.type !== 'tecnologia' ? `<span class="chip">${esc(ROLE_LABEL[s.subtype] ?? s.subtype)}</span>` : ''}
+    ${clouds.slice(0, 3).map((cl) => `<span class="chip">${esc(cl)}</span>`).join('')}${clouds.length > 3 ? `<span class="chip" title="${esc(clouds.slice(3).join(', '))}">+${clouds.length - 3}</span>` : ''}
+    ${s.review_flag ? `<span class="chip flag">revisar</span>` : ''}</div>
   <div>${extLink(s.url, `<strong>${esc(s.title)}</strong>`)}</div>
   ${s.evidence ? `<div class="evidence">${esc(readableEvidence(s))}</div>` : ''}
-  <div class="small muted">Fonte: ${esc(s.source)} · publicada em ${fmtDate(s.published_at)} · coletada em ${fmtDate(s.collected_at)} · vista por último em ${fmtDate(s.last_seen_at)}</div>
+  ${s.review_flag ? `<div class="small" style="color:var(--warn)">${esc(s.review_flag)}</div>` : ''}
+  <div class="small muted">${esc(SOURCE_LABEL[s.source] ?? s.source)}${s.published_at ? ` · publicada em ${fmtDate(s.published_at)}` : ''} · vista em ${fmtDate(s.last_seen_at)}</div>
 </div>`;
   }).join('') || '<p class="muted">Sem sinais.</p>';
 
+  const sector = c.sector ? esc(SECTOR_LABEL[c.sector] ?? c.sector) + (c.sector_source?.startsWith('inferido') ? ' <span class="muted">(a confirmar)</span>' : '') : '';
+  const contacts = (d.contacts ?? []).map((ct) => `<div class="ev small"><strong>${esc(personName(ct.name))}</strong>${ct.role ? ` — ${esc(ct.role)}` : ''}${ct.since ? ` <span class="muted">(desde ${esc(fmtSince(ct.since))})</span>` : ''}
+        ${ct.channel ? `<div>${/^https?:/.test(ct.channel) ? extLink(ct.channel, esc(ct.channel)) : esc(ct.channel)}</div>` : ''}${ct.origin === 'manual' ? '<div class="muted">cadastrado à mão</div>' : ''}</div>`).join('');
+
   return layout(`${c.name} · Radar`, `
-<p class="small"><a href="/">← voltar para os leads</a></p>
+<p class="small"><a href="/">← Leads</a></p>
 <div class="grid">
   <div class="stack">
     <div class="card">
       <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
-        <div><div class="big score ${scoreClass(c.total)}">${c.total ?? '—'}</div><div class="small muted">nota (${esc(c.rules_version ?? '')})</div></div>
+        <div><div class="big score ${scoreClass(c.total)}">${c.total ?? '—'}</div><div class="small muted">nota</div></div>
         <div><h2 style="margin:0;font-size:20px">${esc(c.name)}</h2>
-          <div class="small muted">Aderência ${c.fit ?? 0}/40 · Sinal ${c.signal ?? 0}/60 · calculada em ${fmtDate(c.computed_at)}</div>
-          <div class="small muted">${esc([c.city, c.state].filter(Boolean).join(' / '))}${c.sector ? ' · ' + esc(SECTOR_LABEL[c.sector] ?? c.sector) + ' (' + esc(c.sector_source) + ')' : ''}</div>
+          <div class="small muted">${[esc([c.city, c.state].filter(Boolean).join(' / ')), sector].filter(Boolean).join(' · ')}</div>
           ${c.excluded_reason ? `<span class="chip flag">excluída: ${esc(c.excluded_reason)}</span>` : ''}
           <div style="margin-top:6px">${statusChip(c)}</div></div>
       </div>
       ${isStatic ? '' : `<div class="decision">${decisionButtons(c.id, c.status, false, c.outreach)}</div>`}
     </div>
-    <div class="card"><h2>Por que essa nota</h2>${bd || '<p class="muted">Ainda não pontuada.</p>'}</div>
+    ${plan}
+    <div class="card"><h2>Por que essa nota</h2>${bd}</div>
     <div class="card"><h2>Evidências (${d.signals.length})</h2>${signals}</div>
   </div>
   <div class="stack">
-    <div class="card"><h2>Oferta sugerida</h2>${offers}</div>
-    <div class="card"><h2>Hipótese e rascunho de abordagem</h2>
-      <p class="small muted">Geração via Claude API entra na etapa 9. O rascunho nunca é enviado automaticamente.</p></div>
-    ${isStatic ? readOnlyFollowUp(c) : `<form class="card stack" method="post" action="/empresa/${c.id}">
-      <h2>Acompanhamento</h2>
-      <label class="small muted">Próxima ação<br><input name="next_action" value="${esc(c.next_action)}" style="width:100%"></label>
-      <label class="small muted">Data da próxima ação<br><input type="date" name="next_action_at" value="${esc(c.next_action_at)}"></label>
-      <label class="small muted">Excluir do radar<br><select name="excluded_reason">${option('', 'Não excluir', c.excluded_reason ?? '')}${option('cliente', 'Já é cliente', c.excluded_reason ?? '')}${option('concorrente', 'Concorrente/consultoria', c.excluded_reason ?? '')}${option('recrutadora', 'Recrutadora', c.excluded_reason ?? '')}</select></label>
-      <label class="small muted">Anotações<br><textarea name="notes" rows="4" style="width:100%">${esc(c.notes)}</textarea></label>
-      <button type="submit">Salvar</button>
-    </form>`}
     <div class="card"><h2>Contatos</h2>
-      ${(d.contacts ?? []).map((p) => `<div class="ev small"><strong>${esc(p.name)}</strong>${p.role ? ` — ${esc(p.role)}` : ''}${p.since ? ` <span class="muted">(desde ${esc(p.since.split('-').reverse().join('/'))})</span>` : ''}
-        ${p.channel ? `<div>${/^https?:/.test(p.channel) ? extLink(p.channel, esc(p.channel)) : esc(p.channel)}</div>` : ''}<div class="muted">${esc(p.origin === 'manual' ? 'cadastrado à mão' : p.origin)}</div></div>`).join('') || '<p class="small muted">Nenhum contato ainda.</p>'}
-      ${isStatic ? '' : `<form method="post" action="/empresa/${c.id}/contato" class="stack" style="margin-top:10px">
+      ${contacts || '<p class="small muted">Nenhum ainda.</p>'}
+      ${isStatic ? '' : `<details class="more"${contacts ? '' : ' open'}><summary>Adicionar contato</summary><form method="post" action="/empresa/${c.id}/contato" class="stack" style="margin-top:8px">
         <input name="name" placeholder="Nome" required style="width:100%">
         <input name="role" placeholder="Cargo" style="width:100%">
-        <input name="channel" placeholder="E-mail, telefone ou link do perfil" style="width:100%">
-        <button type="submit" class="btn secondary sm">Adicionar contato</button></form>`}
-      <p class="small muted" style="margin:8px 0 0">Dados de contato para abordagem B2B (legítimo interesse). Se a pessoa pedir, remova.</p></div>
+        <input name="channel" placeholder="E-mail, telefone ou LinkedIn" style="width:100%">
+        <button type="submit" class="btn secondary sm">Salvar contato</button></form></details>`}
+      <p class="small muted" style="margin:8px 0 0">Se a pessoa pedir, remova o contato.</p></div>
+    ${isStatic ? readOnlyFollowUp(c) : `<form class="card stack" method="post" action="/empresa/${c.id}">
+      <h2>Anotações</h2>
+      <textarea name="notes" rows="4" style="width:100%" placeholder="O que você sabe sobre esse lead">${esc(c.notes)}</textarea>
+      <label class="small muted">Próxima ação<input name="next_action" value="${esc(c.next_action)}" style="width:100%" placeholder="Ex.: ligar para o gerente de CRM"></label>
+      <label class="small muted">Quando<input type="date" name="next_action_at" value="${esc(c.next_action_at)}"></label>
+      <button type="submit">Salvar</button>
+    </form>`}
     <div class="card timeline"><h2>Histórico</h2>${timeline}</div>
-    <div class="card small"><h2>Nomes encontrados</h2>${d.aliases.map((a) => `<div>${esc(a.alias)} <span class="muted">(${esc(a.source)})</span></div>`).join('')}</div>
+    ${d.aliases.length > 1 ? `<details class="card small more"><summary>Outros nomes da empresa (${d.aliases.length})</summary>${d.aliases.map((a) => `<div>${esc(a.alias)} <span class="muted">(${esc(SOURCE_LABEL[a.source] ?? a.source)})</span></div>`).join('')}</details>` : ''}
   </div>
-</div>${isStatic ? '' : `<script>document.addEventListener('radar:decided', function () { setTimeout(function () { location.reload(); }, 500); });</script>`}`, isStatic);
+</div>${COPY_SCRIPT}${isStatic ? '' : `<script>document.addEventListener('radar:decided', function () { setTimeout(function () { location.reload(); }, 500); });</script>`}`, isStatic);
 }
+
+// Botão "Copiar" do rascunho (página Hoje e página do lead).
+export const COPY_SCRIPT = `<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-copy]'); if (!b) return;
+  var t = b.parentElement.querySelector('textarea'); t.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.resolve(document.execCommand('copy')))
+    .then(function () { if (window.radar) window.radar.toast('Mensagem copiada'); else b.textContent = 'Copiada'; });
+});
+</script>`;
 
 // Janelas de descartar/adiar, aviso de confirmação e o script comum das decisões (só no painel local).
 // Qualquer elemento com data-decide="aprovar|descartar|adiar|reabrir" e data-id dispara a decisão;
@@ -349,13 +400,13 @@ const DECISION_UI = `
 <dialog id="dlg-descartar"><form method="dialog" class="stack">
   <h2>Descartar lead</h2>
   <label>Motivo<select name="reason">${DISCARD_REASONS.map((r) => `<option value="${r.id}">${esc(r.label)}</option>`).join('')}</select></label>
-  <p class="small muted" style="margin:0">"Já é cliente" e "Concorrente" também tiram a empresa das próximas coletas.</p>
+  <p class="small muted" style="margin:0">"Já é cliente" e "Concorrente" não voltam nas próximas buscas.</p>
   <label>Observação (opcional)<textarea name="note" rows="3"></textarea></label>
   <div class="actions"><button value="ok" class="bad">Descartar</button><button value="cancel" class="btn secondary" formnovalidate>Cancelar</button></div>
 </form></dialog>
 <dialog id="dlg-adiar"><form method="dialog" class="stack">
   <h2>Adiar lead</h2>
-  <p class="small muted" style="margin:0">Some da triagem até a data e volta sozinha depois.</p>
+  <p class="small muted" style="margin:0">Some até a data escolhida e depois volta.</p>
   <label>Voltar a mostrar em<input type="date" name="until" required></label>
   <label>Observação (opcional)<textarea name="note" rows="2"></textarea></label>
   <div class="actions"><button value="ok">Adiar</button><button value="cancel" class="btn secondary" formnovalidate>Cancelar</button></div>
@@ -466,12 +517,11 @@ export const STATIC_FILTER_SCRIPT = `<script>
 })();
 </script>`;
 
-function readOnlyFollowUp(c: { status: string; stage: string; next_action: string | null; next_action_at: string | null; notes: string | null }): string {
+function readOnlyFollowUp(c: { next_action: string | null; next_action_at: string | null; notes: string | null }): string {
+  if (!c.notes && !c.next_action) return '';
   return `<div class="card stack">
-      <h2>Acompanhamento</h2>
-      <p class="small muted">Versão publicada, somente leitura. Edite no painel local e publique de novo.</p>
-      <div class="small">Status: <strong>${esc(STATUS_LABEL[c.status] ?? c.status)}</strong> · Etapa: <strong>${esc(STAGE_LABEL[c.stage] ?? c.stage)}</strong></div>
-      <div class="small">Próxima ação: ${esc(c.next_action) || '—'}${c.next_action_at ? ' (' + esc(c.next_action_at) + ')' : ''}</div>
+      <h2>Anotações</h2>
       ${c.notes ? `<div class="small" style="white-space:pre-wrap">${esc(c.notes)}</div>` : ''}
+      ${c.next_action ? `<div class="small"><strong>Próxima ação:</strong> ${esc(c.next_action)}${c.next_action_at ? ' (' + esc(fmtSince(c.next_action_at)) + ')' : ''}</div>` : ''}
     </div>`;
 }

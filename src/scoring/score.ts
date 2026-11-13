@@ -71,9 +71,9 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
     rule: 'Setor-alvo', group: 'aderencia', max: 15, signalIds: [],
     points: inIcp ? (sectorInferred ? 8 : 15) : 0,
     reason: inIcp
-      ? `Setor ${label(company.sector!)} (${company.sector_source})${sectorInferred ? ' — inferido, vale metade até confirmar pelo CNAE' : ''}`
+      ? `${cap(label(company.sector!))}${sectorInferred ? ' (a confirmar: vale metade até confirmar na Receita)' : ''}`
       : company.sector
-        ? `Setor "${company.sector}" fora do perfil (indústria, financeiro, agro)`
+        ? 'Setor fora do perfil (indústria, financeiro, agro)'
         : 'Setor ainda não identificado',
   });
 
@@ -83,10 +83,10 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
     rule: `Porte ${icp.minEmployees}+ funcionários`, group: 'aderencia', max: 15, signalIds: [],
     points: sizeOk ? (sizeInferred ? 7 : 15) : 0,
     reason: sizeOk
-      ? `Porte ${company.size_band} (${company.size_source})`
+      ? (sizeInferred ? 'A confirmar: vale metade até confirmar na Receita' : 'Confirmado na Receita')
       : company.size_band
         ? `Porte ${company.size_band}, abaixo do perfil`
-        : 'Porte ainda não verificado (enriquecimento por CNPJ em etapa futura)',
+        : 'Porte ainda não verificado',
   });
 
   // Brasil vale cheio (a Sottelli é brasileira); outro país da América Latina vale 6.
@@ -98,10 +98,10 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
     points: brJobs.length ? 10 : latamJobs.length ? 6 : 0,
     signalIds: (brJobs.length ? brJobs : latamJobs).slice(0, 3).map((s) => s.id),
     reason: brJobs.length
-      ? `${brJobs.length} vaga(s) no Brasil${latamJobs.length ? `; também em ${latamNames}` : ''}`
+      ? `Vagas no Brasil${latamJobs.length ? ` e em ${latamNames}` : ''}`
       : latamJobs.length
-        ? `${latamJobs.length} vaga(s) em ${latamNames} (América Latina fora do Brasil vale 6)`
-        : 'Sem evidência de operação no Brasil ou na América Latina',
+        ? `Vagas em ${latamNames}`
+        : 'Sem sinal de operação no Brasil ou na América Latina',
   });
 
   // ---------- Força do sinal (60) ----------
@@ -123,28 +123,28 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
   const oldest = techOpen[0];
   if (!oldest && openJobs.length) {
     jobPoints = 8;
-    jobReason = `Vaga "${openJobs[0].title}" cita Salesforce, mas não é cargo técnico (sem bônus por tempo aberta)`;
+    jobReason = `"${openJobs[0].title}" cita Salesforce, mas não é vaga técnica`;
   }
   if (oldest) {
     const age = ageDays(oldest);
     const bonus = OPEN_AGE_BONUS.find(([min]) => age >= min)?.[1] ?? 0;
     jobPoints = 10 + bonus;
-    jobReason = `Vaga "${oldest.title}" aberta há ${age} dia(s) (${oldest.source})`
-      + (bonus ? `: +${bonus} por tempo aberta (dificuldade de contratar)` : ': recente, ganha pontos conforme continuar aberta');
+    jobReason = `"${oldest.title}" aberta há ${age} dia${age === 1 ? '' : 's'}`
+      + (bonus ? `: difícil de contratar (+${bonus})` : '');
     const seniorJobs = techOpen.filter((s) => {
       const m = jobMeta(s);
       return m.senior || m.role === 'arquiteto' || m.role === 'tech_lead';
     });
     if (techOpen.length >= 2 || seniorJobs.length) {
       jobPoints += 5;
-      jobReason += techOpen.length >= 2 ? `; +5 por ${techOpen.length} vagas técnicas Salesforce abertas` : '; +5 por vaga sênior/arquitetura';
+      jobReason += techOpen.length >= 2 ? `; ${techOpen.length} vagas técnicas abertas (+5)` : '; vaga sênior (+5)';
     }
   } else if (!openJobs.length && sfJobs.length) {
     jobPoints = 3;
     const s = sfJobs[0];
-    jobReason = EVERGREEN_TITLE.test(s.title) ? `Só "${s.title}" (banco de talentos, não é contratação)`
-      : seenDaysAgo(s) > jobWindows.stillOpenDays ? `Vaga "${s.title}" não aparece mais na fonte há ${seenDaysAgo(s)} dia(s): provavelmente fechada`
-        : `Vaga "${s.title}" aberta há ${ageDays(s)} dias: vaga permanente, não contratação de verdade`;
+    jobReason = EVERGREEN_TITLE.test(s.title) ? `Só banco de talentos ("${s.title}")`
+      : seenDaysAgo(s) > jobWindows.stillOpenDays ? `"${s.title}" saiu do ar há ${seenDaysAgo(s)} dias: provavelmente fechada`
+        : `"${s.title}" aberta há ${ageDays(s)} dias: vaga permanente`;
   }
   breakdown.push({
     rule: 'Vaga Salesforce aberta', group: 'sinal', max: 40, points: Math.min(jobPoints, 40),
@@ -159,10 +159,10 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
     points: techSignals.length ? 20 : cloudJobs.length ? 10 : 0,
     signalIds: (techSignals.length ? techSignals : cloudJobs).slice(0, 5).map((s) => s.id),
     reason: techSignals.length
-      ? `Confirmada no site/DNS: ${[...new Set(techSignals.map((s) => s.title))].join(', ')}`
+      ? `Já usa ${[...new Set(techSignals.map((s) => s.title.replace(/ \(e-mail da plataforma\)| \(caso de cliente publicado\)/, '')))].join(', ')}`
       : cloudJobs.length
-        ? `Uso de ${clouds.join(', ')} evidenciado em vaga (confirmação no site/DNS vale 20)`
-        : 'Nenhuma tecnologia Salesforce confirmada ainda',
+        ? `Vaga cita ${clouds.slice(0, 3).join(', ')}${clouds.length > 3 ? ` e mais ${clouds.length - 3}` : ''}`
+        : 'Nenhum uso de Salesforce confirmado ainda',
   });
 
   // ---------- CRM concorrente: candidata a migração ----------
@@ -177,20 +177,20 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
     points: usesCompetitor ? Math.min(15, 12 + (opsJobs.length ? 3 : 0)) : 0,
     signalIds: [...compTech, ...compJobs].slice(0, 5).map((s) => s.id),
     reason: usesCompetitor
-      ? `Usa ${compNames.join(', ')} (${compTech.length ? 'confirmado no site/DNS' : `citado em ${compJobs.length} vaga(s)`}): candidata a migração para Salesforce${opsJobs.length ? '; +3 por vaga de operação comercial/CRM' : ''}`
-      : 'Nenhum CRM concorrente identificado',
+      ? `Usa ${compNames.join(', ')}: pode migrar para Salesforce${opsJobs.length ? '; vaga de operação comercial (+3)' : ''}`
+      : 'Nenhum outro CRM identificado',
   });
 
   const triggers = signals.filter((s) => s.type === 'gatilho' && ageDays(s) <= 90)
     .sort((a, b) => triggerPoints(b) - triggerPoints(a));
   const topTrigger = triggers[0];
   breakdown.push({
-    rule: 'Gatilho recente (90 dias)', group: 'sinal', max: 15,
+    rule: 'Momento da empresa', group: 'sinal', max: 15,
     points: topTrigger ? triggerPoints(topTrigger) : 0,
     signalIds: triggers.slice(0, 3).map((s) => s.id),
     reason: topTrigger
-      ? `${topTrigger.title} (${triggerPoints(topTrigger)} pts; ${triggers.length} gatilho(s) em 90 dias)`
-      : 'Nenhum gatilho recente coletado',
+      ? `${topTrigger.title}${triggers.length > 1 ? ` (e mais ${triggers.length - 1})` : ''}`
+      : 'Nenhuma mudança recente (diretoria, fusão, investimento)',
   });
 
   // ---------- Dor / insatisfação com o sistema atual (bônus de até 15) ----------
@@ -201,12 +201,12 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
   }
   const painFound = [...painByKind.values()].sort((a, b) => (PAIN_POINTS[b.hint.kind] ?? 8) - (PAIN_POINTS[a.hint.kind] ?? 8));
   breakdown.push({
-    rule: 'Dor / insatisfação com o sistema atual', group: 'dor', max: 15,
+    rule: 'Insatisfação com o sistema', group: 'dor', max: 15,
     points: painFound.length ? Math.min(15, (PAIN_POINTS[painFound[0].hint.kind] ?? 8) + 3 * (painFound.length - 1)) : 0,
     signalIds: painFound.map((p) => p.signalId).slice(0, 5),
     reason: painFound.length
       ? painFound.map((p) => `${p.hint.label}: "${p.hint.evidence}"`).join(' | ')
-      : 'Nenhum indício de insatisfação nas vagas (migração de CRM, sistema legado, Salesforce mal aproveitado, processo manual)',
+      : 'Nenhum sinal de insatisfação nas vagas',
   });
 
   // ---------- Ajuste: possível consultoria/recrutadora ----------
@@ -215,7 +215,7 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
     breakdown.push({
       rule: 'Possível consultoria/recrutadora', group: 'ajuste', max: 0, points: -30,
       signalIds: flagged.slice(0, 3).map((s) => s.id),
-      reason: `Todas as vagas indicam contratação para atender clientes (${flagged[0].review_flag!.replace(/^possível consultoria\/recrutadora: /, '')}). Revise e, se for concorrente, exclua.`,
+      reason: `Parece consultoria (${flagged[0].review_flag!.replace(/^possível consultoria\/recrutadora: /, '')}). Confira e descarte se for.`,
     });
   }
 
@@ -303,6 +303,7 @@ export function triggerPoints(s: SignalForScore): number {
 
 const sum = (items: BreakdownItem[]) => items.reduce((acc, b) => acc + b.points, 0);
 const dedupe = (xs: string[]) => [...new Set(xs)];
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const label = (sector: string) => ({ industria: 'indústria', financeiro: 'serviços financeiros', agro: 'agronegócio' })[sector] ?? sector;
 
 export function scoreAll(db: DB, now = new Date()): number {

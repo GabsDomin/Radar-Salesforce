@@ -62,7 +62,7 @@ test('notícia vira gatilho com ponto na nota e oferta Ágil', async () => {
 
   scoreAll(db, NOW);
   const d = getCompany(db, company.id)!;
-  const rule = d.breakdown.find((b) => b.rule.startsWith('Gatilho'))!;
+  const rule = d.breakdown.find((b) => b.rule === 'Momento da empresa')!;
   assert.equal(rule.points, 15);
   assert.match(rule.reason, /Troca de liderança/);
   assert.ok(d.offers.some((o) => o.offer === 'Ágil' && o.reasons.some((r) => r.includes('tecnologia'))));

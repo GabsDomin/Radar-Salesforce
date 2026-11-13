@@ -4,6 +4,7 @@
 import type { PoliteClient } from '../http/client.ts';
 import type { JobPosting } from './types.ts';
 import { detectCountry, isAllowedCountry } from '../normalize/location.ts';
+import { htmlToText } from '../util/excerpt.ts';
 
 const BASE = 'https://www.getonbrd.com/api/v0/search/jobs';
 const PER_PAGE = 50;
@@ -28,9 +29,7 @@ export function searchUrl(term: string, page: number): string {
   return `${BASE}?${new URLSearchParams({ query: term, per_page: String(PER_PAGE), page: String(page), expand: '["company"]' })}`;
 }
 
-function stripHtml(s: string): string {
-  return s.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
-}
+const stripHtml = htmlToText; // mantém parágrafos e itens de lista para recortar frases inteiras
 
 // Primeiro país da vaga que esteja no escopo (Brasil + América Latina); "Remote" sozinho não conta.
 export function gobCountry(countries: string[] | undefined): string | null {
@@ -51,8 +50,8 @@ export function parseGetonbrd(json: string, documentId: number | null): { postin
       externalId: j.id,
       title: a.title.trim(),
       // A descrição da empresa entra junto: é onde consultorias se apresentam ("Somos una consultora de TI").
-      description: stripHtml([a.description, a.functions, a.desirable].filter(Boolean).join(' '))
-        + (a.company?.data?.attributes?.description ? ` Sobre a empresa: ${stripHtml(a.company.data.attributes.description)}` : ''),
+      description: stripHtml([a.description, a.functions, a.desirable].filter(Boolean).join('\n'))
+        + (a.company?.data?.attributes?.description ? `\nSobre a empresa: ${stripHtml(a.company.data.attributes.description)}` : ''),
       companyName: (a.company?.data?.attributes?.name ?? '').trim(),
       url: j.links?.public_url ?? `https://www.getonbrd.com/jobs/${j.id}`,
       publishedAt: a.published_at ? new Date(a.published_at * 1000).toISOString() : null,

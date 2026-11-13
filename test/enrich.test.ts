@@ -63,7 +63,7 @@ test('Receita: setor e porte confirmados, diretoria vira contato e entrada recen
   assert.equal(lid.title, 'Nova diretoria: Diretor desde 01/09/2026');
   assert.doesNotMatch(lid.title, /MARIA/); // o nome fica no contato, não no título do sinal
   assert.equal(lid.url, brasilApiUrl('11222333000181'));
-  assert.match(detailPage(d), /MARIA SILVA<\/strong> — Diretor/);
+  assert.match(detailPage(d), /Maria Silva<\/strong> — Diretor/); // nome da Receita sem CAIXA ALTA
   assert.deepEqual(applyReceita(db, 1, info, NOW), { directors: 0, leadershipChanges: 0 }); // não duplica
 
   // Lead com diretoria nova aparece em Hoje (Ágil) com rascunho sem citar "notícia".

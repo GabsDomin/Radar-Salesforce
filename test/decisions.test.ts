@@ -203,7 +203,7 @@ test('lead manual: indicação entra com +15, recusa excluída e aparece via for
   scoreAll(db);
   const d = getCompany(db, r.id!)!;
   assert.equal(d.company.domain, 'indicada.com.br');
-  assert.equal(d.breakdown.find((b) => b.rule.startsWith('Gatilho'))!.points, 15);
+  assert.equal(d.breakdown.find((b) => b.rule === 'Momento da empresa')!.points, 15);
   assert.match(detailPage(d), /Indicação: indicada pela Maria/);
   assert.match(detailPage(d), /href="https:\/\/indicada\.com\.br"/); // com site, a evidência aponta para ele
   const semSite = addManualLead(db, { name: 'Sem Site Ltda', origin: 'evento' });

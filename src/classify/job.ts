@@ -1,6 +1,7 @@
 // Classificação de vagas: papel, Clouds citadas, senioridade, setor provável e
 // se a vaga parece ser de consultoria/recrutadora (que não é prospect).
 import { stripAccents } from '../normalize/company.ts';
+import { cleanForExcerpt, normalizedWithMap, excerptAround } from '../util/excerpt.ts';
 
 export type JobRole = 'arquiteto' | 'tech_lead' | 'developer' | 'admin' | 'funcional' | 'qa' | 'usuario_crm' | 'outro';
 
@@ -38,14 +39,16 @@ const PAIN_PATTERNS: [PainKind, string, RegExp][] = [
   ['processo_manual', 'processo manual / falta de integração', /(controles?|processos?|relatorios?|vendas|atendimento) (em|via|por|feitos? em) planilhas?|processos? manuais|controles? manuais|falta de integra\w+ entre|sistemas? (nao|sem) integrad\w+/],
 ];
 
-export function detectPain(all: string, radius = 70): PainHint[] {
+// Procura no texto normalizado (minúsculas, sem acento) e mostra a frase inteira do texto original.
+export function detectPain(original: string): PainHint[] {
+  const text = cleanForExcerpt(original);
+  const { norm, map } = normalizedWithMap(text);
   const out: PainHint[] = [];
   for (const [kind, label, re] of PAIN_PATTERNS) {
-    const m = re.exec(all);
+    const m = re.exec(norm);
     if (!m) continue;
-    const start = Math.max(0, m.index - radius);
-    const snippet = all.slice(start, m.index + m[0].length + radius).replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim();
-    out.push({ kind, label, evidence: (start > 0 ? '…' : '') + snippet + '…' });
+    const a = map[m.index], b = map[m.index + m[0].length];
+    out.push({ kind, label, evidence: excerptAround(text, a, b - a, 60, 360) });
   }
   return out;
 }
@@ -160,7 +163,7 @@ export function classifyJob(title: string, description: string): JobClassificati
     supportHints,
     consultancyReasons,
     consultancyStrong,
-    pain: detectPain(all),
+    pain: detectPain(`${title}\n${description}`),
     competitorCrms: COMPETITOR_CRMS.filter(([, re]) => re.test(all)).map(([name]) => name),
     opsRole: OPS_ROLE.test(t),
     sector,

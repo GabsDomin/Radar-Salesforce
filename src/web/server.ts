@@ -12,7 +12,7 @@ import { dashboardData } from './dashboard.ts';
 import { dashboardPage, updatePage, modalityPage } from './pages.ts';
 import { MODALITIES, modalityRows, lastRunOf, tabCounts } from './modalities.ts';
 import { FAVICON_SVG } from './favicon.ts';
-import { todayData, todayPage, coSellCsv } from './today.ts';
+import { todayData, todayPage, coSellCsv, planForLead } from './today.ts';
 import { UpdateRunner } from './jobs.ts';
 
 const FILTER_KEYS: (keyof Filters)[] = ['q', 'setor', 'oferta', 'sinal', 'status', 'excluidas', 'min', 'visao'];
@@ -120,7 +120,7 @@ export function createServer(db: DB, runner = new UpdateRunner(db)) {
           return res.end();
         }
         const detail = getCompany(db, id);
-        return detail ? send(res, 200, detailPage(detail)) : send(res, 404, notFoundPage());
+        return detail ? send(res, 200, detailPage({ ...detail, plan: planForLead(db, id) })) : send(res, 404, notFoundPage());
       }
       send(res, 404, notFoundPage());
     } catch (err) {
