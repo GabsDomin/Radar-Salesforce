@@ -5,6 +5,7 @@
 //   dor        indício de insatisfação com o sistema atual, lido nas vagas
 import type { DB } from '../db/index.ts';
 import { countryName } from '../normalize/location.ts';
+import { readableEvidence } from '../tech/explain.ts';
 
 export type ModalityId = 'vagas' | 'lideranca' | 'gatilhos' | 'dor' | 'concorrente' | 'tecnologia';
 
@@ -106,7 +107,7 @@ export function modalityRows(db: DB, id: ModalityId, f: ModalityFilters = {}): M
 function toRow(id: ModalityId, r: RawRow): ModalityRow {
   const meta = r.meta ? JSON.parse(r.meta) : {};
   const tags: string[] = [];
-  let detail = r.evidence ?? '';
+  let detail = readableEvidence(r);
   if (id === 'vagas') {
     if (r.subtype) tags.push(r.subtype);
     for (const c of (meta.clouds ?? []) as string[]) tags.push(c);

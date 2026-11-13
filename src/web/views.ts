@@ -5,6 +5,7 @@ import type { BreakdownItem, OfferSuggestion } from '../scoring/score.ts';
 import { DISCARD_REASONS, DISCARD_LABEL } from '../pipeline/decisions.ts';
 import { MANUAL_ORIGINS } from '../pipeline/manualLeads.ts';
 import { VISAO_LABEL, visoesOf, type Visao } from './queries.ts';
+import { readableEvidence } from '../tech/explain.ts';
 
 // Abas da seção Leads: a lista completa e as modalidades (ver modalities.ts).
 const LEAD_TABS: [string, string, string][] = [
@@ -137,8 +138,7 @@ kbd { border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 
 </head>
 <body>
 <header><h1><a href="/dashboard">Radar de Oportunidades Salesforce</a></h1>
-  <nav><a href="/hoje">Hoje</a><a href="/dashboard">Dashboard</a>${isStatic ? '' : '<a href="/triagem">Triagem</a>'}<a href="/">Leads</a>${isStatic ? '' : '<a href="/atualizar">Atualizar</a>'}</nav>
-  <span class="sub">Sottelli · uso interno · nada é enviado automaticamente</span></header>
+  <nav><a href="/hoje">Hoje</a><a href="/dashboard">Dashboard</a>${isStatic ? '' : '<a href="/triagem">Triagem</a>'}<a href="/">Leads</a>${isStatic ? '' : '<a href="/atualizar">Atualizar</a>'}</nav></header>
 <main>${body}</main>
 ${isStatic ? '' : DECISION_UI}
 </body>
@@ -292,7 +292,7 @@ export function detailPage(d: {
     ${(meta.clouds ?? []).map((cl: string) => `<span class="chip">${esc(cl)}</span>`).join('')}
     ${s.review_flag ? `<span class="chip flag">${esc(s.review_flag)}</span>` : ''}</div>
   <div>${extLink(s.url, `<strong>${esc(s.title)}</strong>`)}</div>
-  ${s.evidence ? `<div class="evidence">${esc(s.evidence)}</div>` : ''}
+  ${s.evidence ? `<div class="evidence">${esc(readableEvidence(s))}</div>` : ''}
   <div class="small muted">Fonte: ${esc(s.source)} · publicada em ${fmtDate(s.published_at)} · coletada em ${fmtDate(s.collected_at)} · vista por último em ${fmtDate(s.last_seen_at)}</div>
 </div>`;
   }).join('') || '<p class="muted">Sem sinais.</p>';

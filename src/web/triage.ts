@@ -1,6 +1,7 @@
 // Triagem: um lead por vez, do maior para o menor score, para decidir rápido.
 // Atalhos: A aprova, D descarta, S adia, J pula, K volta, O abre o lead.
 import type { getCompany } from './queries.ts';
+import { readableEvidence } from '../tech/explain.ts';
 import { esc, layout, fmtDate, scoreClass, decisionButtons, extLink } from './views.ts';
 
 type LeadDetail = NonNullable<ReturnType<typeof getCompany>>;
@@ -22,7 +23,7 @@ function card(d: LeadDetail, i: number): string {
   <div class="cols" style="margin-top:14px">
     <div><h2>Por que entrou</h2>${why.map((b) => `<div class="bd-row"><div class="bd-pts">+${b.points}</div><div><strong>${esc(b.rule)}</strong><div class="small">${esc(b.reason)}</div></div></div>`).join('') || '<p class="small muted">Sem pontos positivos.</p>'}</div>
     <div><h2>Evidências</h2>${signals.map((s) => `<div class="signal">${extLink(s.url, `<strong>${esc(s.title)}</strong>`)}
-      ${s.evidence ? `<div class="evidence">${esc(s.evidence)}</div>` : ''}<div class="small muted">${esc(s.source)} · ${fmtDate(s.published_at ?? s.collected_at)}</div></div>`).join('') || '<p class="small muted">Sem sinais.</p>'}
+      ${s.evidence ? `<div class="evidence">${esc(readableEvidence(s))}</div>` : ''}<div class="small muted">${esc(s.source)} · ${fmtDate(s.published_at ?? s.collected_at)}</div></div>`).join('') || '<p class="small muted">Sem sinais.</p>'}
       ${d.signals.length > 3 ? `<p class="small"><a href="/empresa/${c.id}">+ ${d.signals.length - 3} evidência(s)</a></p>` : ''}</div>
   </div>
   <div class="decision">${decisionButtons(c.id, c.status, false, c.outreach)}

@@ -187,3 +187,14 @@ test('CVM com nome antigo liga ao lead pelo domínio (Banco UBS Pactual ↔ BTG 
   assert.deepEqual([stats.leadsEnriched, stats.newLeads], [1, 0]);
   assert.deepEqual((db.prepare('SELECT name, domain FROM companies').all() as { name: string; domain: string }[]).map((r) => [r.name, r.domain]), [['BTG Pactual', 'btgpactual.com']]);
 });
+
+test('evidência técnica vira frase legível', async () => {
+  const { readableEvidence } = await import('../src/tech/explain.ts');
+  const spf = 'v=spf1 include:spf.protection.outlook.com include:mail.zendesk.com include:marketing.dynamics.com include:cust-spf.exacttarget.com include:_spf1.btgpactual.com include:spf.mandrillapp.com include:_spf.salesforce.com ip4:204.239.0.224/27 ~all';
+  const txt = readableEvidence({ type: 'tecnologia', evidence: spf, meta: JSON.stringify({ vendor: 'Salesforce (e-mail da plataforma)', how: 'DNS (SPF)', domain: 'btgpactual.com' }) });
+  assert.equal(txt, 'O domínio btgpactual.com autoriza Salesforce a enviar e-mails em seu nome (registro SPF do DNS): sinal de que usa a ferramenta com clientes. Também envia e-mail por Microsoft 365, Zendesk, Dynamics 365 Marketing, Salesforce Marketing Cloud e Mailchimp (Mandrill).');
+  assert.doesNotMatch(txt, /ip4|include/);
+  assert.match(readableEvidence({ type: 'tecnologia', evidence: 'go.alfa.com.br → go.pardot.com', meta: JSON.stringify({ vendor: 'Account Engagement (Pardot)', how: 'DNS (CNAME)' }) }), /^O endereço go\.alfa\.com\.br aponta para go\.pardot\.com/);
+  assert.equal(readableEvidence({ type: 'tecnologia', evidence: '<script src="https://js.hs-scripts.com/123.js">', meta: JSON.stringify({ vendor: 'HubSpot', how: 'site' }) }), 'O site da empresa usa HubSpot (rastreamento e formulários de marketing), encontrado no código da página inicial.');
+  assert.equal(readableEvidence({ type: 'vaga', evidence: 'texto da vaga', meta: null }), 'texto da vaga');
+});

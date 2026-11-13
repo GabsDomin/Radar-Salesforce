@@ -22,6 +22,7 @@ const SPF_RULES: [RegExp, string, VendorKind][] = [
   [/rdstation|rd\.services/, 'RD Station', 'concorrente'],
   [/mktomail\.com|marketo/, 'Adobe Marketo', 'concorrente'],
   [/zcsend\.net/, 'Zoho Campaigns', 'concorrente'],
+  [/marketing\.dynamics\.com/, 'Dynamics 365 Marketing', 'concorrente'],
 ];
 
 // Subdomínios típicos de ferramentas de marketing apontando (CNAME) para o fornecedor.
