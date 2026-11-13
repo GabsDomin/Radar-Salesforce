@@ -7,15 +7,15 @@ import type { DB } from '../db/index.ts';
 import { draftMessage, TARGET_ROLE, type Offer, type Draft } from '../outreach/draft.ts';
 import { esc, layout, scoreClass, decisionButtons, statusChip, extLink } from './views.ts';
 import { toCsv } from '../util/csv.ts';
+import { jobWindows, EVERGREEN_TITLE, TECH_ROLES } from '../config.ts';
 
 const DAY = 86_400_000;
-const STILL_OPEN_DAYS = 21;   // vaga vista nos últimos 21 dias = ainda aberta
+const STILL_OPEN_DAYS = jobWindows.stillOpenDays;
 const PER_OFFER = 12;
 const FOLLOW_UP_DAYS = 5;     // sem retorno há 5+ dias: lembrar de cobrar
 
-const IMPROVE_ROLES = ['developer', 'admin', 'funcional', 'qa', 'arquiteto', 'tech_lead'];
-const EVERGREEN_TITLE = /banco de talentos|talent pool|cadastro reserva|vagas? futuras?|oportunidades futuras|cadastre seu curr/i;
-const MAX_REAL_OPEN_DAYS = 180;
+const IMPROVE_ROLES = TECH_ROLES;
+const MAX_REAL_OPEN_DAYS = jobWindows.maxRealOpenDays;
 
 interface SignalRow {
   company_id: number; type: string; subtype: string | null; title: string; url: string; source: string;
@@ -81,8 +81,8 @@ export function todayData(db: DB, now = new Date()): TodayData {
       out.improve.push({
         ...base, offer: 'Improve', evidenceUrl: j.url,
         reason: `Vaga "${j.title}" aberta há ${days} dia(s)${openJobs.length > 1 ? `; ${openJobs.length} vagas Salesforce abertas` : ''}`,
-        // A nota manda (perfil + sinais); tempo de vaga aberta e número de vagas desempatam.
-        priority: (c.total ?? 0) + Math.min(days, 90) / 3 + 5 * Math.min(openJobs.length - 1, 5),
+        // A nota já dá mais pontos para vaga aberta há mais tempo; o número de vagas desempata.
+        priority: (c.total ?? 0) + Math.min(days, 90) / 10 + 3 * Math.min(openJobs.length - 1, 5),
         draft: draftMessage({ company: c.name, offer: 'Improve', jobTitle: j.title, daysOpen: days, jobCount: openJobs.length, clouds }),
       });
       continue;

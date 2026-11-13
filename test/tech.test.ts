@@ -146,7 +146,7 @@ test('CRM concorrente nas vagas: entra sem citar Salesforce; "SAP Sales Cloud" n
   assert.doesNotMatch(html, /data-facet="area"/); // filtro de outra aba não aparece
   assert.equal(modalityRows(db, 'concorrente').length, 1);
   const d = getCompany(db, (db.prepare('SELECT id FROM companies').get() as { id: number }).id)!;
-  assert.equal(d.breakdown.find((b) => b.rule === 'Vaga Salesforce ativa')!.points, 0);
+  assert.equal(d.breakdown.find((b) => b.rule === 'Vaga Salesforce aberta')!.points, 0);
   assert.equal(d.breakdown.find((b) => b.rule === 'Usa CRM concorrente')!.points, 15); // 12 + 3 (cargo de CRM)
   assert.ok(d.offers.some((o) => o.offer === 'Ágil'));
 });

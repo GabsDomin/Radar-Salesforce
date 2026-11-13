@@ -8,7 +8,7 @@ import { PoliteClient, RobotsDisallowedError, type FetchFn } from '../src/http/c
 import { collectGupy, parseGupySearchPage } from '../src/sources/gupy.ts';
 import { ingestJobs, purgeConsultancies } from '../src/pipeline/ingestJobs.ts';
 import { importExclusions } from '../src/pipeline/exclusions.ts';
-import { scoreAll } from '../src/scoring/score.ts';
+import { scoreAll, scoreCompany } from '../src/scoring/score.ts';
 import { listCompanies, getCompany } from '../src/web/queries.ts';
 import { listPage, detailPage } from '../src/web/views.ts';
 import { exportCsv } from '../src/web/export.ts';
@@ -96,10 +96,10 @@ test('pipeline completo: coleta → contas → exclusões → nota → painel/CS
 
   const detail = getCompany(db, top.id)!;
   const rule = (name: string) => detail.breakdown.find((b) => b.rule === name)!;
-  assert.equal(rule('Vaga Salesforce ativa').points, 25); // recente (20) + 2 vagas (5)
+  assert.equal(rule('Vaga Salesforce aberta').points, 40); // aberta (10) + 97 dias aberta (25) + 2 vagas (5)
   assert.equal(rule('Setor-alvo').points, 8);              // inferido
   assert.equal(rule('Tecnologia Salesforce').points, 10);  // cloud citada em vaga
-  assert.equal(top.total, 8 + 0 + 10 + 25 + 10 + 0);
+  assert.equal(top.total, 8 + 0 + 10 + 40 + 10 + 0);
   assert.deepEqual(detail.offers.map((o) => o.offer).sort(), ['Improve', 'Ágil']);
   for (const b of detail.breakdown) assert.ok(b.reason.length > 0, `regra ${b.rule} sem explicação`);
 
@@ -126,7 +126,7 @@ test('pipeline completo: coleta → contas → exclusões → nota → painel/CS
   assert.match(listPage(rows, {}, []), /Alimentos Exemplo/);
   assert.match(detailPage(detail), /Por que essa nota/);
   const out = exportCsv(db, {});
-  assert.match(out, /Alimentos Exemplo S\.A\.;53;/);
+  assert.match(out, /Alimentos Exemplo S\.A\.;68;/);
 
   // Coletar de novo não duplica sinais.
   const again = ingestJobs(db, postings);
@@ -240,4 +240,31 @@ test('somente Brasil e sem consultorias: vaga de fora, nome de consultoria e lim
   const purged = purgeConsultancies(db);
   assert.equal(purged.signals, 2);
   assert.deepEqual((db.prepare('SELECT name FROM companies ORDER BY name').all() as { name: string }[]).map((r) => r.name), ['Antiga Anotada', 'Fabrica Brasil S.A.']);
+});
+
+test('vaga aberta há mais tempo dá nota maior; fechada, banco de talentos e permanente valem pouco', () => {
+  const NOW2 = new Date('2026-11-13T12:00:00Z');
+  const daysAgo = (n: number) => new Date(NOW2.getTime() - n * 86_400_000).toISOString();
+  const job = (id: number, title: string, published: number, seen = 0) => ({
+    id, type: 'vaga', subtype: 'developer', title, source: 'gupy', published_at: daysAgo(published),
+    collected_at: daysAgo(published), last_seen_at: daysAgo(seen), meta: JSON.stringify({ salesforce: true, country: 'BR' }), review_flag: null,
+  });
+  const company = { sector: 'industria', sector_source: 'CNAE', size_band: '100+', size_source: 'Receita' };
+  const pts = (signals: ReturnType<typeof job>[]) =>
+    scoreCompany(company, signals, NOW2).breakdown.find((b) => b.rule === 'Vaga Salesforce aberta')!;
+  assert.equal(pts([job(1, 'Dev Salesforce', 3)]).points, 10);
+  assert.equal(pts([job(1, 'Dev Salesforce', 20)]).points, 17);
+  assert.equal(pts([job(1, 'Dev Salesforce', 35)]).points, 24);
+  assert.equal(pts([job(1, 'Dev Salesforce', 50)]).points, 30);
+  assert.equal(pts([job(1, 'Dev Salesforce', 75)]).points, 35);
+  assert.match(pts([job(1, 'Dev Salesforce', 75)]).reason, /aberta há 75 dia\(s\).*dificuldade de contratar/);
+  assert.equal(pts([job(1, 'Dev Salesforce', 75), job(2, 'Admin Salesforce', 5)]).points, 40); // + várias vagas
+  // Não contam como vaga aberta:
+  assert.equal(pts([job(1, 'Dev Salesforce', 75, 40)]).points, 3);                      // sumiu da fonte há 40 dias
+  assert.equal(pts([job(1, 'Banco de Talentos Salesforce', 75)]).points, 3);           // não é contratação
+  assert.equal(pts([job(1, 'Dev Salesforce', 400)]).points, 3);                         // "permanente"
+  // Vaga de outra área que só cita Salesforce: conta uso, sem bônus por tempo.
+  assert.equal(pts([{ ...job(1, 'Analista de Comunicação', 75), subtype: 'outro' }]).points, 8);
+  // Mesmo perfil: a empresa com vaga antiga fica acima da empresa com vaga nova.
+  assert.ok(scoreCompany(company, [job(1, 'Dev Salesforce', 75)], NOW2).total > scoreCompany(company, [job(1, 'Dev Salesforce', 3)], NOW2).total);
 });

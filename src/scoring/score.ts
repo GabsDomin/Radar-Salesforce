@@ -1,7 +1,7 @@
 // Pontuação 0-100 determinística e explicada. Cada ponto vem de uma regra com motivo e sinais de origem.
 // Também sugere qual oferta da Sottelli encaixa: Keep (sustentação), Improve (alocação), Ágil (projeto).
 import type { DB } from '../db/index.ts';
-import { icp, jobWindows, RULES_VERSION } from '../config.ts';
+import { icp, jobWindows, RULES_VERSION, EVERGREEN_TITLE, OPEN_AGE_BONUS, TECH_ROLES } from '../config.ts';
 import { countryName } from '../normalize/location.ts';
 
 export interface BreakdownItem {
@@ -39,8 +39,14 @@ export interface SignalForScore {
   source: string;
   published_at: string | null;
   collected_at: string;
+  last_seen_at?: string | null; // ausente = considerada vista agora
   meta: string | null;
   review_flag: string | null;
+}
+
+// SQLite grava "2026-11-12 10:00:00" (UTC, sem fuso); o resto vem em ISO.
+function parseDbDate(s: string): Date {
+  return new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
 }
 
 interface PainMeta { kind: string; label: string; evidence: string }
@@ -56,7 +62,7 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
   const jobs = signals.filter((s) => s.type === 'vaga');
   const jobMeta = (s: SignalForScore): JobMeta => (s.meta ? JSON.parse(s.meta) : {});
   const ageDays = (s: SignalForScore) =>
-    Math.floor((now.getTime() - new Date(s.published_at ?? s.collected_at).getTime()) / DAY);
+    Math.max(0, Math.floor((now.getTime() - parseDbDate(s.published_at ?? s.collected_at).getTime()) / DAY));
 
   // ---------- Aderência ao perfil (40) ----------
   const inIcp = company.sector !== null && (icp.sectors as readonly string[]).includes(company.sector);
@@ -100,27 +106,49 @@ export function scoreCompany(company: CompanyForScore, signals: SignalForScore[]
 
   // ---------- Força do sinal (60) ----------
   // Vagas que só citam CRM concorrente têm regra própria; aqui contam só as de Salesforce.
+  // Vaga aberta há mais tempo vale mais: a empresa não está conseguindo contratar, e profissional
+  // alocado (Improve) resolve já. Só conta vaga ainda aberta (vista na fonte recentemente), que não seja
+  // banco de talentos nem vaga "permanente" (mais de 180 dias).
   const sfJobs = jobs.filter((s) => jobMeta(s).salesforce !== false);
-  const sorted = [...sfJobs].sort((a, b) => ageDays(a) - ageDays(b));
-  const newest = sorted[0];
+  const seenDaysAgo = (s: SignalForScore) =>
+    s.last_seen_at ? Math.floor((now.getTime() - parseDbDate(s.last_seen_at).getTime()) / DAY) : 0;
+  const openJobs = sfJobs
+    .filter((s) => seenDaysAgo(s) <= jobWindows.stillOpenDays && !EVERGREEN_TITLE.test(s.title) && ageDays(s) <= jobWindows.maxRealOpenDays)
+    .sort((a, b) => ageDays(b) - ageDays(a));
+  // Só cargo técnico (dev, admin, funcional...) ganha bônus por tempo: é o que a Sottelli aloca.
+  // Vaga de outra área que só cita Salesforce (marketing, comercial) mostra uso, não falta de gente.
+  const techOpen = openJobs.filter((s) => TECH_ROLES.includes(jobMeta(s).role ?? s.subtype ?? ''));
   let jobPoints = 0;
   let jobReason = 'Nenhuma vaga Salesforce encontrada';
-  if (newest) {
-    const age = ageDays(newest);
-    jobPoints = age <= jobWindows.freshDays ? 20 : age <= jobWindows.activeDays ? 12 : 5;
-    jobReason = `Vaga "${newest.title}" publicada há ${age} dia(s) (${newest.source})`;
-    const seniorJobs = sfJobs.filter((s) => {
+  const oldest = techOpen[0];
+  if (!oldest && openJobs.length) {
+    jobPoints = 8;
+    jobReason = `Vaga "${openJobs[0].title}" cita Salesforce, mas não é cargo técnico (sem bônus por tempo aberta)`;
+  }
+  if (oldest) {
+    const age = ageDays(oldest);
+    const bonus = OPEN_AGE_BONUS.find(([min]) => age >= min)?.[1] ?? 0;
+    jobPoints = 10 + bonus;
+    jobReason = `Vaga "${oldest.title}" aberta há ${age} dia(s) (${oldest.source})`
+      + (bonus ? `: +${bonus} por tempo aberta (dificuldade de contratar)` : ': recente, ganha pontos conforme continuar aberta');
+    const seniorJobs = techOpen.filter((s) => {
       const m = jobMeta(s);
       return m.senior || m.role === 'arquiteto' || m.role === 'tech_lead';
     });
-    if (sfJobs.length >= 2 || seniorJobs.length) {
+    if (techOpen.length >= 2 || seniorJobs.length) {
       jobPoints += 5;
-      jobReason += sfJobs.length >= 2 ? `; +5 por ${sfJobs.length} vagas Salesforce` : '; +5 por vaga sênior/arquitetura';
+      jobReason += techOpen.length >= 2 ? `; +5 por ${techOpen.length} vagas técnicas Salesforce abertas` : '; +5 por vaga sênior/arquitetura';
     }
+  } else if (!openJobs.length && sfJobs.length) {
+    jobPoints = 3;
+    const s = sfJobs[0];
+    jobReason = EVERGREEN_TITLE.test(s.title) ? `Só "${s.title}" (banco de talentos, não é contratação)`
+      : seenDaysAgo(s) > jobWindows.stillOpenDays ? `Vaga "${s.title}" não aparece mais na fonte há ${seenDaysAgo(s)} dia(s): provavelmente fechada`
+        : `Vaga "${s.title}" aberta há ${ageDays(s)} dias: vaga permanente, não contratação de verdade`;
   }
   breakdown.push({
-    rule: 'Vaga Salesforce ativa', group: 'sinal', max: 25, points: Math.min(jobPoints, 25),
-    reason: jobReason, signalIds: sorted.slice(0, 5).map((s) => s.id),
+    rule: 'Vaga Salesforce aberta', group: 'sinal', max: 40, points: Math.min(jobPoints, 40),
+    reason: jobReason, signalIds: (openJobs.length ? openJobs : sfJobs).slice(0, 5).map((s) => s.id),
   });
 
   const techSignals = signals.filter((s) => s.type === 'tecnologia' && techMeta(s).vendorKind !== 'concorrente');
@@ -281,7 +309,7 @@ export function scoreAll(db: DB, now = new Date()): number {
   const companies = db.prepare('SELECT id, sector, sector_source, size_band, size_source FROM companies').all() as
     unknown as (CompanyForScore & { id: number })[];
   const signalsOf = db.prepare(
-    'SELECT id, type, subtype, title, source, published_at, collected_at, meta, review_flag FROM signals WHERE company_id = ?',
+    'SELECT id, type, subtype, title, source, published_at, collected_at, last_seen_at, meta, review_flag FROM signals WHERE company_id = ?',
   );
   const upsert = db.prepare(`
     INSERT INTO scores (company_id, total, fit, signal, offers, breakdown, rules_version, computed_at)

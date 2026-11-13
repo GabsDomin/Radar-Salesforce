@@ -58,6 +58,20 @@ export const jobWindows = {
   activeDays: 90,
   // Vaga publicada há mais tempo que isso e ainda aberta = dificuldade de contratar.
   hardToFillDays: 45,
+  // Vaga vista na fonte nos últimos N dias = ainda aberta.
+  stillOpenDays: 21,
+  // Aberta há mais que isso = vaga "permanente" (cadastro contínuo), não contratação de verdade.
+  maxRealOpenDays: 180,
 };
 
-export const RULES_VERSION = 'v1.3';
+// Títulos que não são contratação de verdade (banco de talentos, cadastro reserva...).
+export const EVERGREEN_TITLE = /banco de talentos|talent pool|cadastro reserva|vagas? futuras?|oportunidades futuras|cadastre seu curr/i;
+
+// Pontos por tempo de vaga aberta: quanto mais tempo aberta, maior a dificuldade de contratar
+// e mais chance de aceitar profissional alocado (Improve). [dias mínimos, pontos extras]
+// Cargos técnicos Salesforce: são os que a Sottelli supre com alocação (Improve).
+export const TECH_ROLES = ['developer', 'admin', 'funcional', 'qa', 'arquiteto', 'tech_lead'];
+
+export const OPEN_AGE_BONUS: [number, number][] = [[60, 25], [45, 20], [30, 14], [15, 7]];
+
+export const RULES_VERSION = 'v1.4';
